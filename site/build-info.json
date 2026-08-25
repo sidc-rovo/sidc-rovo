@@ -1,6 +1,6 @@
 {
   "generated_by": "scripts/atlassian_sync.py",
-  "synced_at": "2026-08-25 22:48 UTC",
+  "synced_at": "2026-08-25 22:50 UTC",
   "commit_count": 7,
   "sha": "e78e15b7ab83a5054ac843045345a4230bad9e8e",
   "commit_url": "https://github.com/sidc-rovo/sidc-rovo/commit/e78e15b7ab83a5054ac843045345a4230bad9e8e",
@@ -30,8 +30,8 @@
       ],
       "author": "Siddhartha Chaturvedi",
       "date": "2026-08-25T15:10:37-07:00",
-      "issue_key": null,
-      "issue_url": null
+      "issue_key": "SIDC-10",
+      "issue_url": "https://affirma-demo.atlassian.net/browse/SIDC-10"
     },
     {
       "sha": "d7feca8609355faf2515c2db21cb2faa1338b6b1",
@@ -41,8 +41,8 @@
       ],
       "author": "Siddhartha Chaturvedi",
       "date": "2026-08-25T15:09:17-07:00",
-      "issue_key": null,
-      "issue_url": null
+      "issue_key": "SIDC-9",
+      "issue_url": "https://affirma-demo.atlassian.net/browse/SIDC-9"
     },
     {
       "sha": "8d095421d3bca96bd98923d55224525fc6f83aab",
@@ -52,8 +52,8 @@
       ],
       "author": "Siddhartha Chaturvedi",
       "date": "2026-08-25T14:53:44-07:00",
-      "issue_key": null,
-      "issue_url": null
+      "issue_key": "SIDC-8",
+      "issue_url": "https://affirma-demo.atlassian.net/browse/SIDC-8"
     },
     {
       "sha": "e934b0eeb0f0d4b37a14b4b0cdd7c684083dc25d",
@@ -63,8 +63,8 @@
       ],
       "author": "Siddhartha Chaturvedi",
       "date": "2026-08-25T14:52:27-07:00",
-      "issue_key": null,
-      "issue_url": null
+      "issue_key": "SIDC-7",
+      "issue_url": "https://affirma-demo.atlassian.net/browse/SIDC-7"
     },
     {
       "sha": "778498c4200cafeadc96d6e52050d39b237e1a21",
@@ -95,8 +95,8 @@
       ],
       "author": "Siddhartha Chaturvedi",
       "date": "2026-08-20T01:21:09-07:00",
-      "issue_key": null,
-      "issue_url": null
+      "issue_key": "SIDC-6",
+      "issue_url": "https://affirma-demo.atlassian.net/browse/SIDC-6"
     }
   ]
 }

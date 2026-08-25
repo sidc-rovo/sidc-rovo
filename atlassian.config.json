@@ -26,6 +26,11 @@
     "site_dir": "site"
   },
 
+  "_comment_exclude": "Commits whose subject starts with any of these are ignored entirely. Keeps the sync's own derived-state commits out of the history it reports on.",
+  "exclude_subject_prefixes": [
+    "chore: refresh build-info.json"
+  ],
+
   "_comment_areas": "Maps changed file paths to a human-readable area. First matching prefix wins; order matters.",
   "areas": [
     { "prefix": "site/index.html",     "area": "Landing page" },

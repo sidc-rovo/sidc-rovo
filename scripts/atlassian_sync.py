@@ -91,9 +91,14 @@ def classify(paths: list[str], area_rules: list[dict[str, str]]) -> list[str]:
     return found
 
 
-def collect_commits(rev_range: str, area_rules: list[dict[str, str]]) -> list[dict[str, Any]]:
+def collect_commits(
+    rev_range: str,
+    area_rules: list[dict[str, str]],
+    exclude_prefixes: list[str] | None = None,
+) -> list[dict[str, Any]]:
     fmt = FIELD_SEP.join(["%H", "%h", "%s", "%b", "%an", "%ae", "%aI"]) + REC_SEP
     raw = git("log", f"--pretty=format:{fmt}", "--no-merges", rev_range)
+    skip = tuple(exclude_prefixes or ())
 
     commits: list[dict[str, Any]] = []
     for chunk in raw.split(REC_SEP):
@@ -103,6 +108,10 @@ def collect_commits(rev_range: str, area_rules: list[dict[str, str]]) -> list[di
         if len(parts) < 7:
             continue
         sha, short, subject, body, author, email, date = parts[:7]
+
+        # The sync's own derived-state commits are not work worth tracking.
+        if skip and subject.strip().startswith(skip):
+            continue
 
         files = [
             f for f in git("show", "--name-only", "--pretty=format:", sha).splitlines() if f
@@ -587,6 +596,47 @@ def sync_jira(api: Atlassian, cfg: dict, commits: list[dict], parent: str | None
 # build-info.json — what the website reads
 # ----------------------------------------------------------------------------
 
+def backfill_issue_keys(
+    api: Atlassian, cfg: dict, commits: list[dict], jira_map: dict[str, dict]
+) -> None:
+    """Fill in issue keys for commits synced by an *earlier* run.
+
+    jira_map only covers the current range, so without this the site's table
+    shows a blank Jira column for every older commit. One JQL by label covers
+    the whole visible window.
+    """
+    missing = [c for c in commits if c["sha"] not in jira_map]
+    if not missing or api.dry_run:
+        return
+
+    labels = ", ".join(f'"sha-{c["short"]}"' for c in missing)
+    try:
+        issues = api.jql(
+            f'project = {cfg["jira"]["project_key"]} AND labels IN ({labels})'
+        )
+    except Fail as exc:
+        log(f"could not backfill issue keys (non-fatal): {exc}")
+        return
+
+    by_label: dict[str, str] = {}
+    for issue in issues:
+        for label in issue["fields"].get("labels", []):
+            if label.startswith("sha-"):
+                by_label[label] = issue["key"]
+
+    filled = 0
+    for c in missing:
+        key = by_label.get(f"sha-{c['short']}")
+        if key:
+            jira_map[c["sha"]] = {
+                "key": key,
+                "url": f"https://{api.site}/browse/{key}",
+                "action": "backfilled",
+            }
+            filled += 1
+    log(f"backfilled {filled} issue key(s) from earlier runs")
+
+
 def write_build_info(
     cfg: dict, all_commits: list[dict], jira_map: dict[str, dict], synced_at: str
 ) -> Path:
@@ -687,8 +737,9 @@ def main() -> int:
 
     rev_range = resolve_range(args)
     step(f"Reading git history ({rev_range})")
-    new_commits = collect_commits(rev_range, cfg["areas"])
-    all_commits = collect_commits("HEAD", cfg["areas"])
+    excluded = cfg.get("exclude_subject_prefixes", [])
+    new_commits = collect_commits(rev_range, cfg["areas"], excluded)
+    all_commits = collect_commits("HEAD", cfg["areas"], excluded)
     log(f"{len(new_commits)} commit(s) in range · {len(all_commits)} in full history")
 
     if not new_commits:
@@ -734,6 +785,8 @@ def main() -> int:
 
     # --- website state ----------------------------------------------------
     step("Website")
+    if not args.skip_jira:
+        backfill_issue_keys(api, cfg, all_commits[-RECENT_ON_SITE:], jira_map)
     info = write_build_info(cfg, all_commits, jira_map, synced_at)
     log(f"wrote {info.relative_to(REPO_ROOT)}")
 
