@@ -254,6 +254,45 @@ class Atlassian:
 
 
 # ----------------------------------------------------------------------------
+# preflight
+# ----------------------------------------------------------------------------
+
+def preflight(api: Atlassian, cfg: dict) -> None:
+    """Verify who we are and that we can actually see the targets.
+
+    Worth the three extra calls: without this, a credential pointing at the
+    wrong Atlassian account fails much later with Jira's misleading
+    "target project doesn't exist or you don't have permission" — which reads
+    like a config error when it is really an identity error.
+    """
+    who = api.get("/rest/api/3/myself")
+    account = who.get("emailAddress") or who.get("accountId", "unknown")
+    log(f"authenticated as: {who.get('displayName', '?')} <{account}>")
+
+    project_key = cfg["jira"]["project_key"]
+    try:
+        proj = api.get(f"/rest/api/3/project/{project_key}")
+        log(f"jira project visible: {proj.get('key')} — {proj.get('name')}")
+    except Fail as exc:
+        raise Fail(
+            f"The account above cannot see Jira project '{project_key}'.\n"
+            f"This is an identity problem, not a config one: the API token "
+            f"belongs to an account without access to that project.\n"
+            f"Fix ATLASSIAN_EMAIL / ATLASSIAN_API_TOKEN so they belong to an "
+            f"account that can create issues in {project_key}.\n\n{exc}"
+        ) from exc
+
+    space_key = cfg["confluence"]["space_key"]
+    res = api.get(f"/wiki/api/v2/spaces?keys={urllib.parse.quote(space_key)}")
+    if not (res.get("results") or []):
+        raise Fail(
+            f"The account above cannot see Confluence space '{space_key}'.\n"
+            f"Grant it access, or use credentials for an account that has it."
+        )
+    log(f"confluence space visible: {space_key}")
+
+
+# ----------------------------------------------------------------------------
 # ADF builders (Jira v3 wants Atlassian Document Format, not markdown)
 # ----------------------------------------------------------------------------
 
@@ -629,6 +668,10 @@ def main() -> int:
 
     synced_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     api = Atlassian(site, email or "dry@run", token or "dry", dry_run=args.dry_run)
+
+    if not args.dry_run:
+        step("Preflight")
+        preflight(api, cfg)
 
     rev_range = resolve_range(args)
     step(f"Reading git history ({rev_range})")
