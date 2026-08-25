@@ -1,14 +1,91 @@
 {
   "generated_by": "scripts/atlassian_sync.py",
-  "synced_at": "2026-08-25 21:44 UTC",
-  "commit_count": 1,
-  "sha": "eed2e7afd54ed183a3c1e334ab85769c91f6b3df",
-  "commit_url": "https://github.com/sidc-rovo/sidc-rovo/commit/eed2e7afd54ed183a3c1e334ab85769c91f6b3df",
+  "synced_at": "2026-08-25 22:48 UTC",
+  "commit_count": 7,
+  "sha": "e78e15b7ab83a5054ac843045345a4230bad9e8e",
+  "commit_url": "https://github.com/sidc-rovo/sidc-rovo/commit/e78e15b7ab83a5054ac843045345a4230bad9e8e",
   "jira_project": "SIDC",
   "jira_project_url": "https://affirma-demo.atlassian.net/jira/core/projects/SIDC/board",
   "confluence_space": "SIDC",
   "confluence_url": "https://affirma-demo.atlassian.net/wiki/spaces/SIDC/overview",
   "recent": [
+    {
+      "sha": "e78e15b7ab83a5054ac843045345a4230bad9e8e",
+      "subject": "Link the live site, mark Pages setup complete",
+      "areas": [
+        "Profile README",
+        "Documentation"
+      ],
+      "author": "Siddhartha Chaturvedi",
+      "date": "2026-08-25T15:48:23-07:00",
+      "issue_key": "SIDC-11",
+      "issue_url": "https://affirma-demo.atlassian.net/browse/SIDC-11"
+    },
+    {
+      "sha": "1e924d8759a6d98bc7eb183b1014d489ae4c9ad0",
+      "subject": "Add --check flag for one-shot credential verification",
+      "areas": [
+        "Documentation",
+        "Sync tooling"
+      ],
+      "author": "Siddhartha Chaturvedi",
+      "date": "2026-08-25T15:10:37-07:00",
+      "issue_key": null,
+      "issue_url": null
+    },
+    {
+      "sha": "d7feca8609355faf2515c2db21cb2faa1338b6b1",
+      "subject": "Add preflight identity and access check",
+      "areas": [
+        "Sync tooling"
+      ],
+      "author": "Siddhartha Chaturvedi",
+      "date": "2026-08-25T15:09:17-07:00",
+      "issue_key": null,
+      "issue_url": null
+    },
+    {
+      "sha": "8d095421d3bca96bd98923d55224525fc6f83aab",
+      "subject": "Revert Pages self-enablement, document manual step",
+      "areas": [
+        "CI / automation"
+      ],
+      "author": "Siddhartha Chaturvedi",
+      "date": "2026-08-25T14:53:44-07:00",
+      "issue_key": null,
+      "issue_url": null
+    },
+    {
+      "sha": "e934b0eeb0f0d4b37a14b4b0cdd7c684083dc25d",
+      "subject": "Self-enable GitHub Pages on first deploy",
+      "areas": [
+        "CI / automation"
+      ],
+      "author": "Siddhartha Chaturvedi",
+      "date": "2026-08-25T14:52:27-07:00",
+      "issue_key": null,
+      "issue_url": null
+    },
+    {
+      "sha": "778498c4200cafeadc96d6e52050d39b237e1a21",
+      "subject": "Add sidc.ai website with commit-driven Atlassian sync",
+      "areas": [
+        "Git hooks",
+        "CI / automation",
+        "Sync config",
+        "Documentation",
+        "Sync tooling",
+        "Site behaviour",
+        "Media",
+        "Website",
+        "Landing page",
+        "Design system"
+      ],
+      "author": "Siddhartha Chaturvedi",
+      "date": "2026-08-25T14:51:24-07:00",
+      "issue_key": null,
+      "issue_url": null
+    },
     {
       "sha": "eed2e7afd54ed183a3c1e334ab85769c91f6b3df",
       "subject": "Add profile README",
