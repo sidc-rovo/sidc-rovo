@@ -1,14 +1,27 @@
 {
   "generated_by": "scripts/atlassian_sync.py",
-  "synced_at": "2026-08-25 22:50 UTC",
-  "commit_count": 7,
-  "sha": "e78e15b7ab83a5054ac843045345a4230bad9e8e",
-  "commit_url": "https://github.com/sidc-rovo/sidc-rovo/commit/e78e15b7ab83a5054ac843045345a4230bad9e8e",
+  "synced_at": "2026-08-25 22:51 UTC",
+  "commit_count": 8,
+  "sha": "903c129da67d6e82b6a21a9e7ca4097430623348",
+  "commit_url": "https://github.com/sidc-rovo/sidc-rovo/commit/903c129da67d6e82b6a21a9e7ca4097430623348",
   "jira_project": "SIDC",
   "jira_project_url": "https://affirma-demo.atlassian.net/jira/core/projects/SIDC/board",
   "confluence_space": "SIDC",
   "confluence_url": "https://affirma-demo.atlassian.net/wiki/spaces/SIDC/overview",
   "recent": [
+    {
+      "sha": "903c129da67d6e82b6a21a9e7ca4097430623348",
+      "subject": "Backfill issue keys and exclude the sync own commits",
+      "areas": [
+        "Sync config",
+        "Sync tooling",
+        "Website"
+      ],
+      "author": "Siddhartha Chaturvedi",
+      "date": "2026-08-25T15:51:10-07:00",
+      "issue_key": "SIDC-12",
+      "issue_url": "https://affirma-demo.atlassian.net/browse/SIDC-12"
+    },
     {
       "sha": "e78e15b7ab83a5054ac843045345a4230bad9e8e",
       "subject": "Link the live site, mark Pages setup complete",
