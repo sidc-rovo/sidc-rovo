@@ -1,0 +1,10 @@
+# Local Atlassian credentials — never commit these.
+.atlassian.env
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store

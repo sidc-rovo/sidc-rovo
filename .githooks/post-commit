@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# sidc-rovo — post-commit hook
+#
+# Fires the Atlassian sync for the commit that was just made. Deliberately
+# forgiving: a hook must never leave you unable to commit, so every failure
+# path here exits 0. The GitHub Actions run on push is the authoritative sync;
+# this is just the fast local signal.
+#
+# Install with: scripts/install-hooks.sh
+# Skip once with: SKIP_ATLASSIAN_SYNC=1 git commit ...
+
+set -uo pipefail
+
+if [[ -n "${SKIP_ATLASSIAN_SYNC:-}" ]]; then
+  echo "atlassian-sync: skipped (SKIP_ATLASSIAN_SYNC set)"
+  exit 0
+fi
+
+# Don't recurse: the sync writes site/build-info.json, which you may then commit.
+if [[ -n "${ATLASSIAN_SYNC_RUNNING:-}" ]]; then
+  exit 0
+fi
+export ATLASSIAN_SYNC_RUNNING=1
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+SCRIPT="$REPO_ROOT/scripts/atlassian_sync.py"
+[[ -f "$SCRIPT" ]] || exit 0
+
+# Optional local credential file, git-ignored. Keeps tokens out of your shell rc.
+if [[ -f "$REPO_ROOT/.atlassian.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/.atlassian.env"
+  set +a
+fi
+
+if [[ -z "${ATLASSIAN_EMAIL:-}" || -z "${ATLASSIAN_API_TOKEN:-}" ]]; then
+  echo "atlassian-sync: no credentials found, skipping (see docs/SETUP.md)"
+  exit 0
+fi
+
+PY="$(command -v python3 || true)"
+if [[ -z "$PY" ]]; then
+  echo "atlassian-sync: python3 not found, skipping"
+  exit 0
+fi
+
+echo "atlassian-sync: syncing $(git rev-parse --short HEAD) …"
+if ! "$PY" "$SCRIPT"; then
+  echo "atlassian-sync: sync failed — commit kept, push will retry via CI" >&2
+fi
+
+exit 0

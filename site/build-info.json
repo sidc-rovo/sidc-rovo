@@ -1,0 +1,25 @@
+{
+  "generated_by": "scripts/atlassian_sync.py",
+  "synced_at": "2026-08-25 21:44 UTC",
+  "commit_count": 1,
+  "sha": "eed2e7afd54ed183a3c1e334ab85769c91f6b3df",
+  "commit_url": "https://github.com/sidc-rovo/sidc-rovo/commit/eed2e7afd54ed183a3c1e334ab85769c91f6b3df",
+  "jira_project": "SIDC",
+  "jira_project_url": "https://affirma-demo.atlassian.net/jira/core/projects/SIDC/board",
+  "confluence_space": "SIDC",
+  "confluence_url": "https://affirma-demo.atlassian.net/wiki/spaces/SIDC/overview",
+  "recent": [
+    {
+      "sha": "eed2e7afd54ed183a3c1e334ab85769c91f6b3df",
+      "subject": "Add profile README",
+      "areas": [
+        "Profile README",
+        "Profile media"
+      ],
+      "author": "Siddhartha Chaturvedi",
+      "date": "2026-08-20T01:21:09-07:00",
+      "issue_key": null,
+      "issue_url": null
+    }
+  ]
+}

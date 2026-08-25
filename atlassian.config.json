@@ -1,0 +1,44 @@
+{
+  "site": "affirma-demo.atlassian.net",
+  "cloud_id": "86c84dbc-25c7-4075-9012-8b83992d1c8e",
+
+  "jira": {
+    "project_key": "SIDC",
+    "project_url": "https://affirma-demo.atlassian.net/jira/core/projects/SIDC/board",
+    "parent_issue_type": "Workstream",
+    "task_issue_type": "Task",
+    "workstream_summary": "sidc.ai website — build & release",
+    "labels": ["sidc-website", "auto-synced"]
+  },
+
+  "confluence": {
+    "space_key": "SIDC",
+    "space_id": "16515076",
+    "space_url": "https://affirma-demo.atlassian.net/wiki/spaces/SIDC/overview",
+    "homepage_id": "16515339",
+    "release_log_title": "Release Log",
+    "changelog_title": "Changelog by Commit"
+  },
+
+  "repo": {
+    "slug": "sidc-rovo/sidc-rovo",
+    "web_url": "https://github.com/sidc-rovo/sidc-rovo",
+    "site_dir": "site"
+  },
+
+  "_comment_areas": "Maps changed file paths to a human-readable area. First matching prefix wins; order matters.",
+  "areas": [
+    { "prefix": "site/index.html",     "area": "Landing page" },
+    { "prefix": "site/styles.css",     "area": "Design system" },
+    { "prefix": "site/app.js",         "area": "Site behaviour" },
+    { "prefix": "site/assets/",        "area": "Media" },
+    { "prefix": "site/",               "area": "Website" },
+    { "prefix": ".github/workflows/",  "area": "CI / automation" },
+    { "prefix": "scripts/",            "area": "Sync tooling" },
+    { "prefix": ".githooks/",          "area": "Git hooks" },
+    { "prefix": "docs/",               "area": "Documentation" },
+    { "prefix": "atlassian.config.json", "area": "Sync config" },
+    { "prefix": "README.md",           "area": "Profile README" },
+    { "prefix": "assets/",             "area": "Profile media" }
+  ]
+}
