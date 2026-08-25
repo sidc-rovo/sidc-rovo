@@ -13,6 +13,16 @@ on:
     paths:
       - "site/**"
       - ".github/workflows/pages.yml"
+  # Also deploy after Atlassian sync finishes. That job commits the refreshed
+  # build-info.json with [skip ci] — necessary, because build-info carries a
+  # synced_at timestamp that changes every run and would otherwise retrigger
+  # the sync forever. But [skip ci] also suppresses the push trigger above,
+  # which left the live Delivery panel permanently one commit stale. This
+  # trigger is how that commit reaches Pages.
+  workflow_run:
+    workflows: ["Atlassian sync"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -31,7 +41,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
+      # ref: main explicitly — on a workflow_run event the default checkout is
+      # the SHA that started the upstream run, which predates the build-info
+      # commit we are here to deploy.
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Sanity-check the site
         run: |
