@@ -646,6 +646,11 @@ def main() -> int:
     ap.add_argument("--range", help="git rev range, e.g. abc123..def456")
     ap.add_argument("--all", action="store_true", help="sync the whole branch history")
     ap.add_argument("--dry-run", action="store_true", help="print actions, change nothing")
+    ap.add_argument(
+        "--check",
+        action="store_true",
+        help="verify credentials and access, then exit without syncing",
+    )
     ap.add_argument("--skip-jira", action="store_true")
     ap.add_argument("--skip-confluence", action="store_true")
     args = ap.parse_args()
@@ -657,6 +662,9 @@ def main() -> int:
     site = os.environ.get("ATLASSIAN_SITE") or cfg["site"]
     email = os.environ.get("ATLASSIAN_EMAIL", "").strip()
     token = os.environ.get("ATLASSIAN_API_TOKEN", "").strip()
+
+    if args.check and args.dry_run:
+        raise Fail("--check needs real credentials, so it cannot be combined with --dry-run")
 
     if not args.dry_run and not (email and token):
         raise Fail(
@@ -672,6 +680,10 @@ def main() -> int:
     if not args.dry_run:
         step("Preflight")
         preflight(api, cfg)
+
+    if args.check:
+        print("\n✓ credentials and access look good", flush=True)
+        return 0
 
     rev_range = resolve_range(args)
     step(f"Reading git history ({rev_range})")

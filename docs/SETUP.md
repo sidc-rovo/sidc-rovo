@@ -35,7 +35,18 @@ ATLASSIAN_EMAIL=schaturvedi2@atlassian.com
 ATLASSIAN_API_TOKEN=your-token-here
 ```
 
-Verify without touching Atlassian:
+Verify the credentials resolve to the right account:
+
+```bash
+python3 scripts/atlassian_sync.py --check
+```
+
+That calls `/myself` and confirms both the Jira project and the Confluence space
+are visible, then exits without writing anything. Do this before anything else —
+a bad token otherwise surfaces later as Jira's misleading *"target project
+doesn't exist or you don't have permission"*.
+
+To test the logic with no credentials at all:
 
 ```bash
 python3 scripts/atlassian_sync.py --all --dry-run
@@ -124,7 +135,16 @@ python3 -m http.server 8000 --directory site
 ## Troubleshooting
 
 **401 on every call** — the email/token pair is wrong, or the token was revoked.
-Note it's the *account* email, not a display name.
+Note it's the *account* email, not a display name. Run `--check` to see which
+account the credentials actually resolve to.
+
+Two gotchas that produce a 401 with credentials that look correct:
+
+- **A truncated token.** Atlassian tokens are long; a partial paste fails the
+  same way a wrong one does.
+- **The wrong kind of token.** This needs a classic API token from
+  `id.atlassian.com/manage-profile/security/api-tokens`. A scoped or Rovo token
+  will not authenticate against these endpoints.
 
 **403 on Jira create** — the account can see `SIDC` but can't create issues in
 it. Check project permissions.
