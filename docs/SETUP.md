@@ -160,3 +160,10 @@ check that `Workstream` still exists as a hierarchy-level-1 type in `SIDC`.
 
 **Two syncs racing** — the workflow uses a `concurrency` group so Confluence
 version numbers can't collide. Don't remove it.
+
+**A push produced no workflow runs at all** — check the commit message body for
+the skip-ci directive. GitHub scans the *entire* message, not just the subject,
+so merely *writing about* `skip`+`ci` in square brackets silently skips every
+workflow for that commit. This bit us once while documenting the sync's own use
+of it. Describe it in prose rather than quoting the literal token, and push a
+follow-up commit to recover — the skip is per-commit, not sticky.
