@@ -56,3 +56,7 @@ Short pieces on how AI is changing the way work gets built:
 
 - Site: [sidc.ai](https://sidc.ai)
 - LinkedIn: [in/sidcai](https://linkedin.com/in/sidcai)
+
+---
+
+<sub>This repo also hosts a [longer version of the above](https://sidc-rovo.github.io/sidc-rovo/) that tracks its own construction — every commit files Jira work and rewrites the Confluence record. Source in [`site/`](site), machinery in [`scripts/`](scripts).</sub>

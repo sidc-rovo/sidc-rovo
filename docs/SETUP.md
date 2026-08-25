@@ -65,10 +65,12 @@ gh secret set ATLASSIAN_API_TOKEN --repo sidc-rovo/sidc-rovo
 The second command prompts for the value so the token never lands in your shell
 history. Paste it, press Enter, then Ctrl-D.
 
-## 4. Turn on Pages
+## 4. Pages — done
 
-Repo **Settings → Pages → Source: GitHub Actions**. The site then publishes to
-`https://sidc-rovo.github.io/sidc-rovo/` on every push that touches `site/`.
+Already enabled with Source: GitHub Actions, and deployed. Live at
+**<https://sidc-rovo.github.io/sidc-rovo/>**
+
+It redeploys on every push that touches `site/`. Nothing further to do here.
 
 ## 5. First full sync
 
