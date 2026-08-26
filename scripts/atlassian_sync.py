@@ -669,7 +669,35 @@ plan and the record still matches what shipped.</p>
 
 
 def _iso_day(ts: str | None) -> str:
-    return (ts or "")[:10] or "unknown"
+    """Date and time, because same-day comparisons are the common case.
+
+    "landed on 2026-08-26, after the page was edited on 2026-08-26" reads as
+    nonsense even when it is true.
+    """
+    dt = to_utc(ts)
+    return dt.strftime("%Y-%m-%d %H:%M UTC") if dt else "unknown"
+
+
+def to_utc(ts: str | None) -> datetime | None:
+    """Parse a timestamp to an aware UTC datetime.
+
+    Necessary because the two sources disagree on format: git's %aI is local
+    time with a numeric offset, Confluence returns UTC with a trailing Z and
+    milliseconds. Comparing those as strings silently gives the wrong answer for
+    anyone not sitting in UTC — which is how the staleness check first failed.
+    """
+    if not ts:
+        return None
+    raw = ts.strip().replace("Z", "+00:00")
+    # fromisoformat on older Pythons chokes on more than 6 fractional digits
+    raw = re.sub(r"\.(\d{6})\d+", r".\1", raw)
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def sync_spec_pages(
@@ -727,6 +755,7 @@ def sync_spec_pages(
         except Fail:
             title = f"page {page_id}"
 
+        edited_dt = to_utc(edited)
         rows, newest_impl, is_stale = [], None, False
         for t in sorted(tickets, key=lambda i: i["key"]):
             key = t["key"]
@@ -742,9 +771,10 @@ def sync_spec_pages(
                 else "<em>no commit yet</em>"
             )
 
-            if done and c and edited and c["date"][:19] > edited[:19]:
+            commit_dt = to_utc(c["date"]) if c else None
+            if done and commit_dt and edited_dt and commit_dt > edited_dt:
                 is_stale = True
-                if newest_impl is None or c["date"] > newest_impl:
+                if newest_impl is None or commit_dt > to_utc(newest_impl):
                     newest_impl = c["date"]
 
             rows.append(
