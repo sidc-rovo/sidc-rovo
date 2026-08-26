@@ -25,6 +25,25 @@ as unplanned work and logged as scope divergence instead.
 
 Never invent a ticket key. Look it up (below) or ask.
 
+### Record decisions as you make them
+
+If you made a real choice — picked an approach, rejected an alternative, accepted
+a tradeoff — add a `Decision:` line. One line each, in the commit body.
+
+```
+Rebuild the design system from tokens
+
+Decision: no CSS framework — three static files outlive any dependency
+Decision: light mode re-picked rather than inverted, because the accent fails on white
+
+SIDC-16
+```
+
+These are collected automatically into the **Decision Log** page in Confluence
+and into `docs/releases/`. This is the cheapest form of architecture decision
+record that anyone actually keeps up, so use it — but only for genuine choices.
+Do not narrate the obvious.
+
 ---
 
 ## Coordinates
@@ -138,6 +157,7 @@ put the page in front of him rather than telling him a URL.
 | `site/index.html` | The website. Single page, no framework, no build step. |
 | `site/app.js` | Reads `build-info.json` to fill the Delivery section. |
 | `site/build-info.json` | **Generated.** Do not hand-edit. |
+| `docs/releases/` | **Generated.** Release notes, one file per ticket, plus an index and a decisions list. Regenerated in full every sync. |
 | `site/styles.css` | Absent in the plain baseline. The design work creates it. |
 | `scripts/atlassian_sync.py` | The sync engine. Python stdlib only. |
 | `atlassian.config.json` | Keys, states, and the path→area map. |
@@ -155,7 +175,9 @@ put the page in front of him rather than telling him a URL.
 - **Do not hand-edit `Release Log` or `Changelog by Commit` in Confluence.**
   They are regenerated in full from `git log` on every sync and your edits will
   vanish. Change the repo instead.
-- **Do not edit `site/build-info.json`.** Same reason.
+- **Do not edit `site/build-info.json` or anything under `docs/releases/`.**
+  Same reason — both are regenerated from `git log` on every sync. If a release
+  note is wrong, the commit message is wrong; fix that.
 - **Do not quote the literal CI-skip token** (the word "skip" and "ci" in square
   brackets) anywhere in a commit message. GitHub scans the whole message body, so
   merely writing about it silently cancels every workflow for that commit. Say

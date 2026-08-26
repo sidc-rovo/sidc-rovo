@@ -22,7 +22,25 @@
     "space_url": "https://affirma-demo.atlassian.net/wiki/spaces/SIDC/overview",
     "homepage_id": "16515339",
     "release_log_title": "Release Log",
-    "changelog_title": "Changelog by Commit"
+    "changelog_title": "Changelog by Commit",
+    "decision_log_title": "Decision Log",
+
+    "_comment_spec_pages": "Maps a ticket label to the Confluence page that specifies it. When work diverges from a ticket, the sync comments on that ticket's spec page — the plan's owner is the person who needs to know reality differed from it.",
+    "spec_pages": {
+      "aeo": "17530882",
+      "design-system": "16809985",
+      "accessibility": "16809985",
+      "media": "16777217"
+    },
+
+    "_comment_comment_on_specs": "Set false to record divergence on pages only, without commenting.",
+    "comment_on_specs": true
+  },
+
+  "_comment_docs": "Auto-generated documentation. Derived state, regenerated in full each run — same contract as the Confluence pages.",
+  "docs": {
+    "releases_dir": "docs/releases",
+    "decision_trailer": "Decision:"
   },
 
   "repo": {
@@ -34,6 +52,12 @@
   "_comment_exclude": "Commits whose subject starts with any of these are ignored entirely. Covers the sync's own derived-state commits and repo housekeeping — neither is work worth reporting on.",
   "exclude_subject_prefixes": [
     "chore:"
+  ],
+
+  "_comment_exclude_paths": "Generated files. Ignored when classifying a commit, so derived state never counts as work or triggers a false divergence.",
+  "exclude_path_prefixes": [
+    "docs/releases/",
+    "site/build-info.json"
   ],
 
   "_comment_areas": "Maps changed file paths to a human-readable area. First matching prefix wins; order matters.",

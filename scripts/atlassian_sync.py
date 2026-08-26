@@ -95,10 +95,12 @@ def collect_commits(
     rev_range: str,
     area_rules: list[dict[str, str]],
     exclude_prefixes: list[str] | None = None,
+    exclude_paths: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     fmt = FIELD_SEP.join(["%H", "%h", "%s", "%b", "%an", "%ae", "%aI"]) + REC_SEP
     raw = git("log", f"--pretty=format:{fmt}", "--no-merges", rev_range)
     skip = tuple(exclude_prefixes or ())
+    skip_paths = tuple(exclude_paths or ())
 
     commits: list[dict[str, Any]] = []
     for chunk in raw.split(REC_SEP):
@@ -113,8 +115,13 @@ def collect_commits(
         if skip and subject.strip().startswith(skip):
             continue
 
+        # Generated files are dropped here, before classification. Otherwise the
+        # sync's own output counts as work and every commit reports a phantom
+        # divergence into whatever area those files live in.
         files = [
-            f for f in git("show", "--name-only", "--pretty=format:", sha).splitlines() if f
+            f
+            for f in git("show", "--name-only", "--pretty=format:", sha).splitlines()
+            if f and not (skip_paths and f.startswith(skip_paths))
         ]
         commits.append(
             {
@@ -280,6 +287,14 @@ class Atlassian:
         results = res.get("results", []) or []
         return results[0] if results else None
 
+    def footer_comment(self, page_id: str, storage_html: str) -> dict:
+        """Comment on a page. Comments survive body regeneration, which is what
+        makes them the right place for an audit trail on a derived page."""
+        return self.post(
+            "/wiki/api/v2/footer-comments",
+            {"pageId": str(page_id), "body": {"representation": "storage", "value": storage_html}},
+        )
+
     def upsert_page(
         self, space_id: str, title: str, storage_html: str, parent_id: str | None
     ) -> dict:
@@ -416,6 +431,7 @@ def storage_release_log(
     cfg: dict,
     synced_at: str,
     divergence: list[dict] | None = None,
+    gaps: list[dict] | None = None,
 ) -> str:
     repo_url = cfg["repo"]["web_url"]
     jira_url = cfg["jira"]["project_url"]
@@ -474,6 +490,33 @@ plan and the record still matches what shipped.</p>
         else ""
     )
 
+    gap_rows = "".join(
+        f"<tr>"
+        f"<td><a href='{escape(site_base)}/browse/{escape(g['key'])}'>"
+        f"{escape(g['key'])}</a></td>"
+        f"<td>{escape(g['summary'])}</td>"
+        f"</tr>"
+        for g in (gaps or [])
+    )
+    gap_section = (
+        f"""
+<ac:structured-macro ac:name="warning">
+  <ac:rich-text-body>
+    <p><strong>Marked Done, but no commit references them.</strong> The inverse of
+    unplanned work, and the more uncomfortable direction: work claimed rather
+    than work unrecorded. Either the commit forgot its ticket reference, or the
+    ticket was closed without a change behind it. Both are worth knowing.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+<table>
+  <thead><tr><th>Ticket</th><th>Summary</th></tr></thead>
+  <tbody>{gap_rows}</tbody>
+</table>
+"""
+        if gap_rows
+        else ""
+    )
+
     area_rows = "".join(
         f"<tr><td>{escape(area)}</td><td>{count}</td></tr>"
         for area, count in sorted(by_area.items(), key=lambda kv: -kv[1])
@@ -507,6 +550,7 @@ plan and the record still matches what shipped.</p>
 </table>
 
 {divergence_section}
+{f"<h2>Evidence gaps</h2>{gap_section}" if gap_section else ""}
 <h2>Release history</h2>
 <table>
   <thead>
@@ -515,6 +559,99 @@ plan and the record still matches what shipped.</p>
   <tbody>{rows or "<tr><td colspan='5'>No commits yet.</td></tr>"}</tbody>
 </table>
 """.strip()
+
+
+def storage_decision_log(commits: list[dict], cfg: dict, synced_at: str) -> str:
+    repo_url = cfg["repo"]["web_url"]
+    site_base = f"https://{cfg['site']}"
+    project = cfg["jira"]["project_key"]
+    trailer = (cfg.get("docs") or {}).get("decision_trailer", "Decision:")
+    newest_first = list(reversed(commits))
+
+    rows = []
+    for c in newest_first:
+        for d in decisions_in(c, trailer):
+            refs = referenced_keys(c, project)
+            ticket = (
+                ", ".join(
+                    f"<a href='{escape(site_base)}/browse/{escape(r)}'>{escape(r)}</a>"
+                    for r in refs
+                )
+                or "—"
+            )
+            rows.append(
+                f"<tr>"
+                f"<td>{escape(d)}</td>"
+                f"<td>{ticket}</td>"
+                f"<td><a href='{escape(repo_url)}/commit/{escape(c['sha'])}'>"
+                f"<code>{escape(c['short'])}</code></a></td>"
+                f"<td>{escape(c['date'][:10])}</td>"
+                f"</tr>"
+            )
+
+    empty = (
+        "<tr><td colspan='4'>No decisions recorded yet. Add a "
+        "<code>Decision:</code> line to a commit message and it appears here.</td></tr>"
+    )
+
+    return f"""
+<ac:structured-macro ac:name="info">
+  <ac:rich-text-body>
+    <p><strong>This page is generated.</strong> Every line comes from a
+    <code>{escape(trailer)}</code> trailer in a commit message, rebuilt from
+    <code>git log</code> on each sync. Hand edits are overwritten.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<h2>Why this exists</h2>
+<p>Decisions are the first thing lost and the most expensive to reconstruct. They
+get made in a chat window, never written down, and six months later nobody can
+say why the thing is the way it is. Architecture decision records solve this and
+almost nobody keeps them up, because the ceremony costs more than the benefit.</p>
+<p>A commit trailer costs one line, sits next to the change it justifies, and
+cannot drift from the code — because it <em>is</em> the code's history. This page is
+just that history, made readable.</p>
+
+<h2>How to add one</h2>
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">text</ac:parameter>
+  <ac:plain-text-body><![CDATA[Rebuild the design system from tokens
+
+Decision: no CSS framework — three static files outlive any dependency
+Decision: light mode re-picked rather than inverted, because the accent fails on white
+
+SIDC-16]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<h2>Decisions</h2>
+<table>
+  <thead><tr><th>Decision</th><th>Ticket</th><th>Commit</th><th>Date</th></tr></thead>
+  <tbody>{''.join(rows) or empty}</tbody>
+</table>
+
+<p><em>Last synced {escape(synced_at)}. {len(rows)} decision(s) recorded.</em></p>
+""".strip()
+
+
+def storage_divergence_comment(
+    divergence: list[dict], cfg: dict, synced_at: str
+) -> str:
+    """Footer comment posted to a spec page when reality left its scope."""
+    repo_url = cfg["repo"]["web_url"]
+    items = "".join(
+        f"<li><a href='{escape(repo_url)}/commit/{escape(d['sha'])}'>"
+        f"<code>{escape(d['short'])}</code></a> — {escape(d['subject'])} "
+        f"(also touched {escape(', '.join(d['areas']))})</li>"
+        for d in divergence
+    )
+    return (
+        f"<p><strong>Reality diverged from this spec.</strong> A commit delivered "
+        f"work described here and also went beyond it:</p>"
+        f"<ul>{items}</ul>"
+        f"<p>Nothing was filed as new work — the record was updated instead. "
+        f"If the extra scope should have been part of this spec, this page is the "
+        f"thing to change. Posted automatically at {escape(synced_at)}.</p>"
+    )
 
 
 def storage_changelog(commits: list[dict], cfg: dict, synced_at: str) -> str:
@@ -600,6 +737,55 @@ def ensure_workstream(api: Atlassian, cfg: dict) -> str | None:
 
 def slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower()
+
+
+def decisions_in(commit: dict, trailer: str) -> list[str]:
+    """Pull `Decision: ...` lines out of a commit body.
+
+    Decisions are the thing that always evaporates. They get made in a chat
+    window or a code review, never written down, and six months later nobody can
+    reconstruct why. A commit trailer is the cheapest possible capture point:
+    zero ceremony, and it sits next to the change it justifies.
+    """
+    found: list[str] = []
+    for line in commit["body"].splitlines():
+        line = line.strip()
+        if line.lower().startswith(trailer.lower()):
+            text = line[len(trailer):].strip(" :-—")
+            if text:
+                found.append(text)
+    return found
+
+
+def evidence_gaps(
+    api: Atlassian, cfg: dict, all_commits: list[dict]
+) -> list[dict]:
+    """Tickets marked Done that no commit ever references.
+
+    The inverse of divergence, and the more uncomfortable direction: work
+    *claimed* rather than work *unrecorded*. A board full of Done cards with no
+    corresponding change is the failure mode that status reporting is famous for.
+    Cheap to check once the commits already name their tickets.
+    """
+    project = cfg["jira"]["project_key"]
+    if api.dry_run:
+        return []
+
+    referenced = {r for c in all_commits for r in referenced_keys(c, project)}
+    try:
+        done = api.jql(
+            f'project = {project} AND statusCategory = Done '
+            f'AND labels = "demo-scope" ORDER BY key ASC'
+        )
+    except Fail as exc:
+        log(f"could not run evidence check (non-fatal): {exc}")
+        return []
+
+    return [
+        {"key": i["key"], "summary": i["fields"].get("summary", "")}
+        for i in done
+        if i["key"] not in referenced
+    ]
 
 
 def unplanned_areas(commit: dict, refs: list[str], index: dict[str, dict]) -> list[str]:
@@ -889,6 +1075,163 @@ def backfill_issue_keys(
     log(f"backfilled {filled} issue key(s) from earlier runs")
 
 
+def write_release_notes(
+    cfg: dict,
+    all_commits: list[dict],
+    divergence: list[dict],
+    synced_at: str,
+) -> list[Path]:
+    """Generate docs/releases/ from git history.
+
+    Derived state, same contract as the Confluence pages: regenerated in full
+    every run, never appended to, so it cannot drift and re-running is free.
+    Anything hand-written here will be overwritten.
+
+    Layout is per-ticket rather than per-commit on purpose. One file per commit
+    would be a changelog with extra steps; one file per ticket answers the
+    question people actually ask — "what shipped for this piece of work?"
+    """
+    docs_cfg = cfg.get("docs") or {}
+    rel_dir = REPO_ROOT / docs_cfg.get("releases_dir", "docs/releases")
+    project = cfg["jira"]["project_key"]
+    repo_url = cfg["repo"]["web_url"]
+    site_base = f"https://{cfg['site']}"
+    trailer = docs_cfg.get("decision_trailer", "Decision:")
+
+    rel_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    newest_first = list(reversed(all_commits))
+
+    # Clear previously generated files so a removed commit doesn't leave a
+    # stale note behind. Only touch what we generate.
+    for old in rel_dir.glob("*.md"):
+        old.unlink()
+
+    def commit_line(c: dict) -> str:
+        return (
+            f"- [`{c['short']}`]({repo_url}/commit/{c['sha']}) "
+            f"{c['subject']} — {', '.join(c['areas']) or 'unclassified'}"
+        )
+
+    # ---- group commits by ticket -----------------------------------------
+    by_ticket: dict[str, list[dict]] = {}
+    unplanned: list[dict] = []
+    for c in newest_first:
+        refs = referenced_keys(c, project)
+        if refs:
+            for r in refs:
+                by_ticket.setdefault(r, []).append(c)
+        else:
+            unplanned.append(c)
+
+    div_by_sha = {d["sha"]: d for d in divergence}
+
+    # ---- one note per ticket ---------------------------------------------
+    for key, commits in sorted(by_ticket.items(), key=lambda kv: kv[0]):
+        lines = [
+            f"# {key}",
+            "",
+            f"[{key}]({site_base}/browse/{key}) · "
+            f"{len(commits)} commit{'' if len(commits) == 1 else 's'}",
+            "",
+            "> Generated from git history. Do not edit — regenerated on every sync.",
+            "",
+            "## What shipped",
+            "",
+        ]
+        lines += [commit_line(c) for c in commits]
+
+        decisions = [
+            (c, d) for c in commits for d in decisions_in(c, trailer)
+        ]
+        if decisions:
+            lines += ["", "## Decisions recorded", ""]
+            lines += [
+                f"- **{d}**  \n  from [`{c['short']}`]({repo_url}/commit/{c['sha']})"
+                for c, d in decisions
+            ]
+
+        drifted = [c for c in commits if c["sha"] in div_by_sha]
+        if drifted:
+            lines += ["", "## Scope notes", ""]
+            lines += [
+                f"- [`{c['short']}`]({repo_url}/commit/{c['sha']}) also touched "
+                f"{', '.join(div_by_sha[c['sha']]['areas'])}, outside this ticket"
+                for c in drifted
+            ]
+
+        lines += ["", "## Files touched", ""]
+        touched = sorted({f for c in commits for f in c["files"]})
+        lines += [f"- `{f}`" for f in touched[:50]]
+        if len(touched) > 50:
+            lines.append(f"- … and {len(touched) - 50} more")
+        lines += ["", f"_Last synced {synced_at}._", ""]
+
+        path = rel_dir / f"{key}.md"
+        path.write_text("\n".join(lines))
+        written.append(path)
+
+    # ---- unplanned work gets its own note --------------------------------
+    if unplanned:
+        lines = [
+            "# Unplanned work",
+            "",
+            "> Generated. Commits that referenced no ticket.",
+            "",
+            "These landed without a plan entry. That is not automatically wrong —",
+            "housekeeping and follow-ups often have no ticket — but it is worth",
+            "knowing what shipped outside the plan.",
+            "",
+        ]
+        lines += [commit_line(c) for c in unplanned]
+        lines += ["", f"_Last synced {synced_at}._", ""]
+        path = rel_dir / "UNPLANNED.md"
+        path.write_text("\n".join(lines))
+        written.append(path)
+
+    # ---- index ------------------------------------------------------------
+    index = [
+        "# Release notes",
+        "",
+        "> Generated from git history on every commit. Do not edit.",
+        "",
+        f"{len(all_commits)} tracked commit{'' if len(all_commits) == 1 else 's'} · "
+        f"{len(by_ticket)} ticket{'' if len(by_ticket) == 1 else 's'} · "
+        f"last synced {synced_at}",
+        "",
+        "| Ticket | Commits | Notes |",
+        "|---|---|---|",
+    ]
+    for key, commits in sorted(by_ticket.items(), key=lambda kv: kv[0]):
+        index.append(f"| [{key}]({site_base}/browse/{key}) | {len(commits)} | [{key}.md]({key}.md) |")
+    if unplanned:
+        index.append(f"| _unplanned_ | {len(unplanned)} | [UNPLANNED.md](UNPLANNED.md) |")
+
+    all_decisions = [
+        (c, d) for c in newest_first for d in decisions_in(c, trailer)
+    ]
+    if all_decisions:
+        index += ["", "## Decisions", ""]
+        index += [
+            f"- **{d}** — [`{c['short']}`]({repo_url}/commit/{c['sha']})"
+            for c, d in all_decisions
+        ]
+
+    index += [
+        "",
+        "## Full history",
+        "",
+    ]
+    index += [commit_line(c) for c in newest_first]
+    index.append("")
+
+    idx_path = rel_dir / "README.md"
+    idx_path.write_text("\n".join(index))
+    written.append(idx_path)
+
+    return written
+
+
 def write_build_info(
     cfg: dict, all_commits: list[dict], jira_map: dict[str, dict], synced_at: str
 ) -> Path:
@@ -1020,8 +1363,9 @@ def main() -> int:
     rev_range = resolve_range(args)
     step(f"Reading git history ({rev_range})")
     excluded = cfg.get("exclude_subject_prefixes", [])
-    new_commits = collect_commits(rev_range, cfg["areas"], excluded)
-    all_commits = collect_commits("HEAD", cfg["areas"], excluded)
+    gen_paths = cfg.get("exclude_path_prefixes", [])
+    new_commits = collect_commits(rev_range, cfg["areas"], excluded, gen_paths)
+    all_commits = collect_commits("HEAD", cfg["areas"], excluded, gen_paths)
     log(f"{len(new_commits)} commit(s) in range · {len(all_commits)} in full history")
 
     if not new_commits:
@@ -1050,10 +1394,18 @@ def main() -> int:
         )
         parent_page = conf.get("homepage_id")
 
+        gaps = [] if args.skip_jira else evidence_gaps(api, cfg, all_commits)
+        if gaps:
+            log(
+                "evidence gap: "
+                + ", ".join(g["key"] for g in gaps)
+                + " marked Done with no commit referencing them"
+            )
+
         rel = api.upsert_page(
             space_id,
             conf["release_log_title"],
-            storage_release_log(all_commits, cfg, synced_at, divergence),
+            storage_release_log(all_commits, cfg, synced_at, divergence, gaps),
             parent_page,
         )
         log(f"{conf['release_log_title']}: {'created' if rel.get('created') else 'updated'}")
@@ -1065,6 +1417,45 @@ def main() -> int:
             parent_page,
         )
         log(f"{conf['changelog_title']}: {'created' if chg.get('created') else 'updated'}")
+
+        dec = api.upsert_page(
+            space_id,
+            conf.get("decision_log_title", "Decision Log"),
+            storage_decision_log(all_commits, cfg, synced_at),
+            parent_page,
+        )
+        log(f"{conf.get('decision_log_title', 'Decision Log')}: "
+            f"{'created' if dec.get('created') else 'updated'}")
+
+        # Comment on the spec pages whose scope reality left behind. A page body
+        # gets rewritten every run; a comment persists, so this is the part that
+        # accumulates into an audit trail the plan's owner will actually see.
+        if divergence and conf.get("comment_on_specs", True) and not api.dry_run:
+            spec_map = conf.get("spec_pages") or {}
+            index = api.issue_index(
+                cfg["jira"]["project_key"],
+                [r for d in divergence for r in d.get("refs", [])],
+            )
+            targets: dict[str, list[dict]] = {}
+            for d in divergence:
+                for ref in d.get("refs", []):
+                    for label in index.get(ref, {}).get("labels", []):
+                        page = spec_map.get(label)
+                        if page:
+                            targets.setdefault(page, []).append(d)
+                            break
+            for page_id, items in targets.items():
+                api.footer_comment(
+                    page_id,
+                    storage_divergence_comment(items, cfg, synced_at),
+                )
+                log(f"commented divergence on spec page {page_id}")
+
+    # --- auto-docs --------------------------------------------------------
+    step("Release notes")
+    notes = write_release_notes(cfg, all_commits, divergence, synced_at)
+    rel_dir = (cfg.get("docs") or {}).get("releases_dir", "docs/releases")
+    log(f"wrote {len(notes)} file(s) under {rel_dir}/")
 
     # --- website state ----------------------------------------------------
     step("Website")

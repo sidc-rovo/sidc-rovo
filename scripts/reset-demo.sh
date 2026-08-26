@@ -88,7 +88,7 @@ echo "▸ git"
 # to move back. Suppress it for the duration.
 export SKIP_ATLASSIAN_SYNC=1
 git reset --hard "$BASELINE" >/dev/null
-git clean -fd site >/dev/null 2>&1 || true
+git clean -fd site docs/releases >/dev/null 2>&1 || true
 echo "    reset to $BASELINE ($BASE_SHA)"
 
 if [ "$PUSH" -eq 1 ]; then
@@ -123,10 +123,11 @@ echo "▸ confluence"
 python3 scripts/atlassian_sync.py --skip-jira --range HEAD..HEAD >/dev/null
 echo "    regenerated from restored history"
 
-# Regenerating also rewrites build-info.json (its synced_at timestamp moves), so
-# the tree would be left dirty. Restore the committed copy — the demo should
-# start from a clean checkout, not a modified one.
-git checkout -- site/build-info.json 2>/dev/null || true
+# Regenerating also rewrites build-info.json and the release notes (their
+# synced_at timestamps move), so the tree would be left dirty. Restore the
+# committed copies — the demo should start from a clean checkout.
+git checkout -- site/build-info.json docs/releases 2>/dev/null || true
+git clean -fd docs/releases >/dev/null 2>&1 || true
 
 echo
 echo "✓ demo reset. Preview the plain baseline with:"

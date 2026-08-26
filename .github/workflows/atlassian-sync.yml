@@ -58,15 +58,20 @@ jobs:
           ATLASSIAN_API_TOKEN: ${{ secrets.ATLASSIAN_API_TOKEN }}
         run: python scripts/atlassian_sync.py ${{ steps.range.outputs.args }}
 
-      - name: Commit refreshed build-info.json
+      - name: Commit regenerated derived state
         run: |
-          if git diff --quiet -- site/build-info.json; then
-            echo "build-info.json unchanged"
+          # build-info.json feeds the site's Delivery panel; docs/releases/ is
+          # the generated release-note tree. Both are derived from git log.
+          if git diff --quiet -- site/build-info.json docs/releases && \
+             [ -z "$(git ls-files --others --exclude-standard docs/releases)" ]; then
+            echo "derived state unchanged"
             exit 0
           fi
           git config user.name  "atlassian-sync[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add site/build-info.json
-          # [skip ci] so committing derived state doesn't retrigger this workflow.
-          git commit -m "chore: refresh build-info.json [skip ci]"
+          git add site/build-info.json docs/releases
+          # The CI-skip directive keeps committing derived state from
+          # retriggering this workflow. pages.yml picks the commit up via its
+          # workflow_run trigger instead.
+          git commit -m "chore: refresh generated docs [skip ci]"
           git push

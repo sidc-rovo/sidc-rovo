@@ -1,6 +1,6 @@
 {
   "generated_by": "scripts/atlassian_sync.py",
-  "synced_at": "2026-08-26 08:11 UTC",
+  "synced_at": "2026-08-26 08:29 UTC",
   "commit_count": 10,
   "sha": "89751c29057b803d4917bc6cadf178e42460fab1",
   "commit_url": "https://github.com/sidc-rovo/sidc-rovo/commit/89751c29057b803d4917bc6cadf178e42460fab1",
@@ -36,8 +36,7 @@
       "subject": "Backfill issue keys and exclude the sync own commits",
       "areas": [
         "Sync config",
-        "Sync tooling",
-        "Website"
+        "Sync tooling"
       ],
       "author": "Siddhartha Chaturvedi",
       "date": "2026-08-25T15:51:10-07:00",
@@ -112,7 +111,6 @@
         "Sync tooling",
         "Site behaviour",
         "Media",
-        "Website",
         "Landing page",
         "Design system"
       ],
