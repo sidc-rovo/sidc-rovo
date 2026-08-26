@@ -8,7 +8,12 @@
     "parent_issue_type": "Workstream",
     "task_issue_type": "Task",
     "workstream_summary": "sidc.ai website — build & release",
-    "labels": ["sidc-website", "auto-synced"]
+    "labels": ["sidc-website", "auto-synced"],
+
+    "_comment_commit_mode": "\"update\" advances the tickets a commit references and reports anything outside their scope. \"create\" is the old behaviour: one new ticket per commit. Update keeps the board a plan instead of a changelog.",
+    "commit_mode": "update",
+    "done_status": "Done",
+    "progress_states": ["In Progress"]
   },
 
   "confluence": {
@@ -26,9 +31,9 @@
     "site_dir": "site"
   },
 
-  "_comment_exclude": "Commits whose subject starts with any of these are ignored entirely. Keeps the sync's own derived-state commits out of the history it reports on.",
+  "_comment_exclude": "Commits whose subject starts with any of these are ignored entirely. Covers the sync's own derived-state commits and repo housekeeping — neither is work worth reporting on.",
   "exclude_subject_prefixes": [
-    "chore: refresh build-info.json"
+    "chore:"
   ],
 
   "_comment_areas": "Maps changed file paths to a human-readable area. First matching prefix wins; order matters.",

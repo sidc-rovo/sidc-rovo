@@ -50,10 +50,12 @@ jobs:
 
       - name: Sanity-check the site
         run: |
+          # index.html and app.js are the only hard requirements. styles.css and
+          # the portrait are intentionally absent from the plain baseline and get
+          # added back by the design work, so they must not gate a deploy.
           test -f site/index.html || { echo "site/index.html missing"; exit 1; }
-          test -f site/styles.css || { echo "site/styles.css missing"; exit 1; }
-          test -f site/assets/sidc.jpeg || { echo "portrait missing"; exit 1; }
-          echo "site/ looks complete"
+          test -f site/app.js || { echo "site/app.js missing"; exit 1; }
+          echo "site/ has the required files"
 
       - uses: actions/configure-pages@v5
 

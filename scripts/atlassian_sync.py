@@ -208,6 +208,62 @@ class Atlassian:
     def comment(self, key: str, adf: dict) -> dict:
         return self.post(f"/rest/api/3/issue/{key}/comment", {"body": adf})
 
+    def issue_status(self, key: str) -> str:
+        res = self.get(f"/rest/api/3/issue/{key}?fields=status")
+        return res.get("fields", {}).get("status", {}).get("name", "")
+
+    def transitions(self, key: str) -> dict[str, str]:
+        """{target status name: transition id}"""
+        res = self.get(f"/rest/api/3/issue/{key}/transitions")
+        return {t["to"]["name"]: t["id"] for t in res.get("transitions", [])}
+
+    def transition(self, key: str, transition_id: str) -> None:
+        self.post(f"/rest/api/3/issue/{key}/transitions", {"transition": {"id": transition_id}})
+
+    def advance_issue(self, key: str, target: str, via: list[str]) -> list[str]:
+        """Move an issue to `target`, stepping through `via` first.
+
+        Stepping through intermediate states matters for the demo and for any
+        real audit: a ticket that jumps straight from To Do to Done leaves no
+        evidence it was ever worked on.
+        """
+        current = self.issue_status(key)
+        if current == target:
+            return []
+
+        applied: list[str] = []
+        for state in [*via, target]:
+            if state == current:
+                continue
+            avail = self.transitions(key)
+            tid = avail.get(state)
+            if not tid:
+                continue
+            self.transition(key, tid)
+            applied.append(state)
+            current = state
+            if state == target:
+                break
+        return applied
+
+    def issue_index(self, project_key: str, keys: list[str]) -> dict[str, dict]:
+        """One call for many issues. Used for both syncing and page generation."""
+        if not keys:
+            return {}
+        joined = ", ".join(sorted(set(keys)))
+        try:
+            issues = self.jql(f"project = {project_key} AND key IN ({joined})")
+        except Fail as exc:
+            log(f"could not load issue index (non-fatal): {exc}")
+            return {}
+        return {
+            i["key"]: {
+                "summary": i["fields"].get("summary", ""),
+                "labels": i["fields"].get("labels", []),
+            }
+            for i in issues
+        }
+
     # -- Confluence ---------------------------------------------------------
     def space_id(self, key: str) -> str:
         res = self.get(f"/wiki/api/v2/spaces?keys={urllib.parse.quote(key)}")
@@ -355,9 +411,16 @@ def commit_description(commit: dict, repo_url: str) -> dict:
 # Confluence page bodies (storage format = XHTML)
 # ----------------------------------------------------------------------------
 
-def storage_release_log(commits: list[dict], cfg: dict, synced_at: str) -> str:
+def storage_release_log(
+    commits: list[dict],
+    cfg: dict,
+    synced_at: str,
+    divergence: list[dict] | None = None,
+) -> str:
     repo_url = cfg["repo"]["web_url"]
     jira_url = cfg["jira"]["project_url"]
+    site_base = f"https://{cfg['site']}"
+    project = cfg["jira"]["project_key"]
     newest_first = list(reversed(commits))
 
     by_area: dict[str, int] = {}
@@ -365,16 +428,50 @@ def storage_release_log(commits: list[dict], cfg: dict, synced_at: str) -> str:
         for a in c["areas"] or ["Unclassified"]:
             by_area[a] = by_area.get(a, 0) + 1
 
+    def ticket_links(c: dict) -> str:
+        refs = referenced_keys(c, project)
+        if not refs:
+            return "<em>unplanned</em>"
+        return ", ".join(
+            f"<a href='{escape(site_base)}/browse/{escape(r)}'>{escape(r)}</a>"
+            for r in refs
+        )
+
     rows = "".join(
         f"<tr>"
         f"<td><a href='{escape(repo_url)}/commit/{escape(c['sha'])}'>"
         f"<code>{escape(c['short'])}</code></a></td>"
         f"<td>{escape(c['subject'])}</td>"
+        f"<td>{ticket_links(c)}</td>"
         f"<td>{escape(', '.join(c['areas']) or '—')}</td>"
-        f"<td>{escape(c['author'])}</td>"
         f"<td>{escape(c['date'][:10])}</td>"
         f"</tr>"
         for c in newest_first
+    )
+
+    div_rows = "".join(
+        f"<tr>"
+        f"<td><a href='{escape(repo_url)}/commit/{escape(d['sha'])}'>"
+        f"<code>{escape(d['short'])}</code></a></td>"
+        f"<td>{escape(d['subject'])}</td>"
+        f"<td>{escape(d['kind'])}</td>"
+        f"<td>{escape(', '.join(d['areas']) or '—')}</td>"
+        f"</tr>"
+        for d in (divergence or [])
+    )
+    divergence_section = (
+        f"""
+<h2>Unplanned changes in the last sync</h2>
+<p>Work that landed outside the scope of the ticket it referenced, or with no
+ticket at all. Recorded rather than filed as new work, so the plan stays the
+plan and the record still matches what shipped.</p>
+<table>
+  <thead><tr><th>Commit</th><th>Change</th><th>Why flagged</th><th>Area</th></tr></thead>
+  <tbody>{div_rows}</tbody>
+</table>
+"""
+        if div_rows
+        else ""
     )
 
     area_rows = "".join(
@@ -409,10 +506,11 @@ def storage_release_log(commits: list[dict], cfg: dict, synced_at: str) -> str:
   <tbody>{area_rows or "<tr><td>—</td><td>0</td></tr>"}</tbody>
 </table>
 
+{divergence_section}
 <h2>Release history</h2>
 <table>
   <thead>
-    <tr><th>Commit</th><th>Change</th><th>Area</th><th>Author</th><th>Date</th></tr>
+    <tr><th>Commit</th><th>Change</th><th>Ticket</th><th>Area</th><th>Date</th></tr>
   </thead>
   <tbody>{rows or "<tr><td colspan='5'>No commits yet.</td></tr>"}</tbody>
 </table>
@@ -500,96 +598,225 @@ def ensure_workstream(api: Atlassian, cfg: dict) -> str | None:
     return created
 
 
-def sync_jira(api: Atlassian, cfg: dict, commits: list[dict], parent: str | None) -> dict[str, dict]:
-    """Returns {sha: {"key":..., "url":..., "action":...}}"""
+def slug(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower()
+
+
+def unplanned_areas(commit: dict, refs: list[str], index: dict[str, dict]) -> list[str]:
+    """Areas the commit touched that none of its referenced tickets claim.
+
+    This is the divergence signal. Work drifts — you set out to do the AEO pass
+    and end up also fixing the nav. That extra scope is real and should land in
+    the record, rather than quietly disappearing because the ticket said
+    something narrower.
+    """
+    claimed: set[str] = set()
+    for ref in refs:
+        claimed.update(index.get(ref, {}).get("labels", []))
+    return [a for a in commit["areas"] if slug(a) not in claimed]
+
+
+def sync_jira(
+    api: Atlassian, cfg: dict, commits: list[dict], parent: str | None
+) -> tuple[dict[str, dict], list[dict]]:
+    """Update the existing plan rather than growing it.
+
+    Returns ({sha: {key, url, action}}, [divergence records]).
+
+    Default mode is "update": a commit advances the tickets it references and
+    reports anything outside their scope. It does not mint a ticket per commit —
+    that turns a plan into a changelog and makes the board unreadable. Set
+    jira.commit_mode to "create" for the old per-commit behaviour.
+    """
     jira = cfg["jira"]
-    key = jira["project_key"]
+    project = jira["project_key"]
+    mode = jira.get("commit_mode", "update")
+    target = jira.get("done_status", "Done")
+    via = jira.get("progress_states", ["In Progress"])
     repo_url = cfg["repo"]["web_url"]
+
+    # A full resync would otherwise post a divergence comment for every commit
+    # that predates the ticket-reference convention. Records stay complete; only
+    # the commenting is capped.
+    comment_budget = int(jira.get("divergence_comment_limit", 5))
+
     results: dict[str, dict] = {}
+    divergence: list[dict] = []
+
+    all_refs = [r for c in commits for r in referenced_keys(c, project)]
+    index = {} if api.dry_run else api.issue_index(project, all_refs)
 
     for c in commits:
-        sha_label = f"sha-{c['short']}"
+        commit_url = f"{repo_url}/commit/{c['sha']}"
+        refs = referenced_keys(c, project)
 
-        # 1. Explicit reference in the message wins — comment, don't duplicate.
-        refs = referenced_keys(c, key)
-        if refs:
-            for ref in refs:
+        # ---- no ticket referenced: entirely unplanned work ----------------
+        if not refs:
+            if mode == "create":
+                results[c["sha"]] = _create_commit_task(api, cfg, c, parent)
+                continue
+
+            divergence.append(
+                {
+                    "sha": c["sha"],
+                    "short": c["short"],
+                    "subject": c["subject"],
+                    "areas": c["areas"],
+                    "kind": "no ticket referenced",
+                    "refs": [],
+                }
+            )
+            if parent and not api.dry_run and comment_budget > 0:
+                comment_budget -= 1
                 api.comment(
-                    ref,
+                    parent,
                     adf_doc(
                         adf_para(
-                            adf_text("Commit "),
-                            adf_link(c["short"], f"{repo_url}/commit/{c['sha']}"),
+                            adf_text("Unplanned change landed with no ticket reference: "),
+                            adf_link(c["short"], commit_url),
                             adf_text(f" — {c['subject']}"),
                         ),
                         adf_para(
                             adf_text(
                                 f"Areas: {', '.join(c['areas']) or 'unclassified'} · "
-                                f"{len(c['files'])} file(s) · {c['author']}"
+                                f"{len(c['files'])} file(s). Logged here rather than "
+                                f"opening a ticket, so the plan stays the plan."
                             )
                         ),
                     ),
                 )
-                log(f"{c['short']} -> commented on {ref}")
-            results[c["sha"]] = {
-                "key": refs[0],
-                "url": f"https://{api.site}/browse/{refs[0]}",
-                "action": "commented",
-            }
+            log(f"{c['short']} -> no ticket referenced, noted on {parent or 'workstream'}")
+            results[c["sha"]] = {"key": None, "url": None, "action": "divergence"}
             continue
 
-        # 2. Already filed? Label lookup is the dedupe key.
-        existing = api.jql(f'project = {key} AND labels = "{sha_label}"')
-        if existing:
-            found = existing[0]["key"]
-            log(f"{c['short']} -> already tracked by {found}")
-            results[c["sha"]] = {
-                "key": found,
-                "url": f"https://{api.site}/browse/{found}",
-                "action": "existing",
-            }
-            continue
+        # ---- tickets referenced: comment and advance them ------------------
+        extra = unplanned_areas(c, refs, index)
+        for ref in refs:
+            if api.dry_run:
+                log(f"[dry-run] {c['short']} -> would advance {ref} to {target}")
+                continue
 
-        # 3. File a new Task.
-        if api.dry_run:
-            log(f"[dry-run] {c['short']} -> would create Task: {c['subject']}")
-            results[c["sha"]] = {"key": None, "url": None, "action": "dry-run"}
-            continue
+            blocks = [
+                adf_para(
+                    adf_text("Delivered by "),
+                    adf_link(c["short"], commit_url),
+                    adf_text(f" — {c['subject']}"),
+                ),
+                adf_para(
+                    adf_text(
+                        f"Areas: {', '.join(c['areas']) or 'unclassified'} · "
+                        f"{len(c['files'])} file(s) · {c['author']}"
+                    )
+                ),
+            ]
+            if extra:
+                blocks.append(
+                    adf_para(
+                        adf_text(
+                            "Scope note — this commit also touched "
+                            + ", ".join(extra)
+                            + ", which this ticket does not cover."
+                        )
+                    )
+                )
+            api.comment(ref, adf_doc(*blocks))
 
-        area_labels = [
-            re.sub(r"[^A-Za-z0-9]+", "-", a).strip("-").lower() for a in c["areas"]
-        ]
-        fields = {
-            "project": {"key": key},
-            "summary": c["subject"][:250] or f"Commit {c['short']}",
-            "issuetype": {"name": jira["task_issue_type"]},
-            "labels": list(dict.fromkeys([*jira["labels"], sha_label, *area_labels])),
-            "description": commit_description(c, repo_url),
-        }
-        if parent:
-            fields["parent"] = {"key": parent}
+            moved = api.advance_issue(ref, target, via)
+            trail = " → ".join(moved) if moved else f"already {target}"
+            log(f"{c['short']} -> {ref}: {trail}")
 
-        try:
-            res = api.create_issue(fields)
-        except Fail as exc:
-            # Parenting is the most likely thing to be rejected; retry flat
-            # rather than losing the issue entirely.
-            if parent and "parent" in str(exc).lower():
-                log(f"{c['short']} -> parent rejected, filing without it")
-                fields.pop("parent", None)
-                res = api.create_issue(fields)
-            else:
-                raise
+        if extra:
+            divergence.append(
+                {
+                    "sha": c["sha"],
+                    "short": c["short"],
+                    "subject": c["subject"],
+                    "areas": extra,
+                    "kind": "scope beyond the ticket",
+                    "refs": refs,
+                }
+            )
+            if parent and not api.dry_run and comment_budget > 0:
+                comment_budget -= 1
+                api.comment(
+                    parent,
+                    adf_doc(
+                        adf_para(
+                            adf_text("Scope divergence on "),
+                            adf_link(c["short"], commit_url),
+                            adf_text(f" ({', '.join(refs)}): "),
+                            adf_text(", ".join(extra)),
+                        ),
+                        adf_para(
+                            adf_text(
+                                "Not filed as new work — recorded against the "
+                                "existing plan so the record matches what shipped."
+                            )
+                        ),
+                    ),
+                )
 
-        new_key = res.get("key")
-        log(f"{c['short']} -> created {new_key}")
         results[c["sha"]] = {
-            "key": new_key,
-            "url": f"https://{api.site}/browse/{new_key}",
-            "action": "created",
+            "key": refs[0],
+            "url": f"https://{api.site}/browse/{refs[0]}",
+            "action": "advanced",
+            "refs": refs,
         }
 
-    return results
+    return results, divergence
+
+
+def _create_commit_task(
+    api: Atlassian, cfg: dict, c: dict, parent: str | None
+) -> dict:
+    """Legacy per-commit ticket creation. Only used when commit_mode is "create"."""
+    jira = cfg["jira"]
+    project = jira["project_key"]
+    sha_label = f"sha-{c['short']}"
+
+    existing = api.jql(f'project = {project} AND labels = "{sha_label}"')
+    if existing:
+        found = existing[0]["key"]
+        log(f"{c['short']} -> already tracked by {found}")
+        return {
+            "key": found,
+            "url": f"https://{api.site}/browse/{found}",
+            "action": "existing",
+        }
+
+    if api.dry_run:
+        log(f"[dry-run] {c['short']} -> would create Task: {c['subject']}")
+        return {"key": None, "url": None, "action": "dry-run"}
+
+    fields = {
+        "project": {"key": project},
+        "summary": c["subject"][:250] or f"Commit {c['short']}",
+        "issuetype": {"name": jira["task_issue_type"]},
+        "labels": list(
+            dict.fromkeys([*jira["labels"], sha_label, *(slug(a) for a in c["areas"])])
+        ),
+        "description": commit_description(c, cfg["repo"]["web_url"]),
+    }
+    if parent:
+        fields["parent"] = {"key": parent}
+
+    try:
+        res = api.create_issue(fields)
+    except Fail as exc:
+        if parent and "parent" in str(exc).lower():
+            log(f"{c['short']} -> parent rejected, filing without it")
+            fields.pop("parent", None)
+            res = api.create_issue(fields)
+        else:
+            raise
+
+    new_key = res.get("key")
+    log(f"{c['short']} -> created {new_key}")
+    return {
+        "key": new_key,
+        "url": f"https://{api.site}/browse/{new_key}",
+        "action": "created",
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -605,6 +832,25 @@ def backfill_issue_keys(
     shows a blank Jira column for every older commit. One JQL by label covers
     the whole visible window.
     """
+    project = cfg["jira"]["project_key"]
+    site = api.site
+
+    # Cheapest source first: a commit that names its ticket needs no API call.
+    from_message = 0
+    for c in commits:
+        if c["sha"] in jira_map:
+            continue
+        refs = referenced_keys(c, project)
+        if refs:
+            jira_map[c["sha"]] = {
+                "key": refs[0],
+                "url": f"https://{site}/browse/{refs[0]}",
+                "action": "referenced",
+            }
+            from_message += 1
+    if from_message:
+        log(f"resolved {from_message} ticket ref(s) from commit messages")
+
     missing = [c for c in commits if c["sha"] not in jira_map]
     if not missing or api.dry_run:
         return
@@ -703,6 +949,11 @@ def main() -> int:
     )
     ap.add_argument("--skip-jira", action="store_true")
     ap.add_argument("--skip-confluence", action="store_true")
+    ap.add_argument(
+        "--start",
+        metavar="KEY",
+        help="mark a ticket In Progress and comment that work began, then exit",
+    )
     args = ap.parse_args()
 
     if not CONFIG_PATH.exists():
@@ -735,6 +986,31 @@ def main() -> int:
         print("\n✓ credentials and access look good", flush=True)
         return 0
 
+    # --- start work on a ticket -------------------------------------------
+    if args.start:
+        key = args.start.strip().upper()
+        step(f"Starting {key}")
+        in_progress = (cfg["jira"].get("progress_states") or ["In Progress"])[0]
+        moved = api.advance_issue(key, in_progress, [])
+        log(f"status: {' → '.join(moved) if moved else f'already {in_progress}'}")
+        api.comment(
+            key,
+            adf_doc(
+                adf_para(
+                    adf_text(
+                        "Work started. Changes will land in "
+                    ),
+                    adf_link(cfg["repo"]["slug"], cfg["repo"]["web_url"]),
+                    adf_text(
+                        f"; reference {key} in the commit message and this ticket "
+                        f"moves to {cfg['jira'].get('done_status', 'Done')} automatically."
+                    ),
+                )
+            ),
+        )
+        print("\n✓ ticket started", flush=True)
+        return 0
+
     rev_range = resolve_range(args)
     step(f"Reading git history ({rev_range})")
     excluded = cfg.get("exclude_subject_prefixes", [])
@@ -747,12 +1023,13 @@ def main() -> int:
 
     # --- Jira -------------------------------------------------------------
     jira_map: dict[str, dict] = {}
+    divergence: list[dict] = []
     if args.skip_jira:
         step("Jira — skipped")
     elif new_commits:
-        step(f"Jira — {cfg['jira']['project_key']}")
+        step(f"Jira — {cfg['jira']['project_key']} ({cfg['jira'].get('commit_mode', 'update')} mode)")
         parent = ensure_workstream(api, cfg)
-        jira_map = sync_jira(api, cfg, new_commits, parent)
+        jira_map, divergence = sync_jira(api, cfg, new_commits, parent)
     else:
         step("Jira — no new commits")
 
@@ -770,7 +1047,7 @@ def main() -> int:
         rel = api.upsert_page(
             space_id,
             conf["release_log_title"],
-            storage_release_log(all_commits, cfg, synced_at),
+            storage_release_log(all_commits, cfg, synced_at, divergence),
             parent_page,
         )
         log(f"{conf['release_log_title']}: {'created' if rel.get('created') else 'updated'}")
