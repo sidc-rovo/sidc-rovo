@@ -2,9 +2,22 @@
 .atlassian.env
 .env
 
+# Generated state. Derived from git log on every sync, so committing it would
+# leave the tree dirty after every commit and add a bot commit to the history
+# it is meant to describe. CI regenerates both at deploy time.
+docs/releases/
+site/build-info.json
+
+# Local editor/agent tooling — machine-specific, not part of the project.
+.claude/launch.json
+.claude/settings.local.json
+
 # Python
 __pycache__/
 *.pyc
 
 # macOS
 .DS_Store
+
+# Staged by the Pages workflow from docs/releases/.
+site/releases/

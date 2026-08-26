@@ -73,6 +73,32 @@ def log(msg: str) -> None:
     print(f"    {msg}", flush=True)
 
 
+def load_env_file() -> bool:
+    """Load .atlassian.env if the credentials aren't already in the environment.
+
+    The hook and reset script both source this file before invoking us, but a
+    human or an agent running the script straight from a shell has no reason to
+    know that — and the failure looked like "credentials missing" rather than
+    "you forgot to source a file". Owning the load here removes the trap.
+    """
+    if os.environ.get("ATLASSIAN_EMAIL") and os.environ.get("ATLASSIAN_API_TOKEN"):
+        return False
+
+    path = REPO_ROOT / ".atlassian.env"
+    if not path.exists():
+        return False
+
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip().strip("'\"")
+        os.environ.setdefault(key, value)
+    return True
+
+
 def step(msg: str) -> None:
     print(f"\n▸ {msg}", flush=True)
 
@@ -90,16 +116,28 @@ def git(*args: str) -> str:
     return out.stdout.strip()
 
 
-def classify(paths: list[str], area_rules: list[dict[str, str]]) -> list[str]:
-    """Map changed paths to human-readable areas. First matching prefix wins."""
+def classify(
+    paths: list[str], area_rules: list[dict[str, str]]
+) -> tuple[list[str], list[str]]:
+    """Map changed paths to areas. First matching prefix wins.
+
+    Returns (areas, unclassified_paths). The second value matters: a file that
+    matches no rule contributes no area, so it can never trigger a divergence —
+    it enters the repository completely invisible to the record. Silence is the
+    worst failure mode for a system whose claim is that the record matches what
+    shipped, so callers are expected to surface these.
+    """
     found: list[str] = []
+    unknown: list[str] = []
     for path in paths:
         for rule in area_rules:
             if path.startswith(rule["prefix"]):
                 if rule["area"] not in found:
                     found.append(rule["area"])
                 break
-    return found
+        else:
+            unknown.append(path)
+    return found, unknown
 
 
 def collect_commits(
@@ -134,6 +172,7 @@ def collect_commits(
             for f in git("show", "--name-only", "--pretty=format:", sha).splitlines()
             if f and not (skip_paths and f.startswith(skip_paths))
         ]
+        areas, unclassified = classify(files, area_rules)
         commits.append(
             {
                 "sha": sha,
@@ -144,7 +183,8 @@ def collect_commits(
                 "author_email": email,
                 "date": date,
                 "files": files,
-                "areas": classify(files, area_rules),
+                "areas": areas,
+                "unclassified": unclassified,
             }
         )
 
@@ -1064,6 +1104,26 @@ def evidence_gaps(
     ]
 
 
+def declared_scope_notes(commit: dict, trailer: str) -> list[str]:
+    """`Scope-note:` lines — drift the author declares rather than us inferring.
+
+    Path-based detection is structurally blind to scope creep inside a file the
+    ticket already claims: adding a block of CSS to a page the AEO ticket owns
+    is real design work, and no amount of prefix matching will see it. In the
+    first live run the agent noticed this about itself and said so in the commit
+    message while the tooling stayed silent. This makes that channel first-class
+    rather than incidental.
+    """
+    found: list[str] = []
+    for line in commit["body"].splitlines():
+        line = line.strip()
+        if line.lower().startswith(trailer.lower()):
+            text = line[len(trailer):].strip(" :-—")
+            if text:
+                found.append(text)
+    return found
+
+
 def unplanned_areas(commit: dict, refs: list[str], index: dict[str, dict]) -> list[str]:
     """Areas the commit touched that none of its referenced tickets claim.
 
@@ -1101,6 +1161,7 @@ def sync_jira(
     # that predates the ticket-reference convention. Records stay complete; only
     # the commenting is capped.
     comment_budget = int(jira.get("divergence_comment_limit", 5))
+    scope_trailer = (cfg.get("docs") or {}).get("scope_trailer", "Scope-note:")
 
     results: dict[str, dict] = {}
     divergence: list[dict] = []
@@ -1153,6 +1214,16 @@ def sync_jira(
 
         # ---- tickets referenced: comment and advance them ------------------
         extra = unplanned_areas(c, refs, index)
+        declared = declared_scope_notes(c, scope_trailer)
+        unknown = c.get("unclassified") or []
+        if unknown:
+            log(
+                f"{c['short']} -> {len(unknown)} unclassified file(s): "
+                + ", ".join(unknown[:4])
+                + (" …" if len(unknown) > 4 else "")
+                + " — add a prefix to atlassian.config.json areas"
+            )
+
         for ref in refs:
             if api.dry_run:
                 log(f"[dry-run] {c['short']} -> would advance {ref} to {target}")
@@ -1181,26 +1252,40 @@ def sync_jira(
                         )
                     )
                 )
+            for note in declared:
+                blocks.append(
+                    adf_para(adf_text(f"Declared scope note — {note}"))
+                )
             api.comment(ref, adf_doc(*blocks))
 
             moved = api.advance_issue(ref, target, via)
             trail = " → ".join(moved) if moved else f"already {target}"
             log(f"{c['short']} -> {ref}: {trail}")
 
+        # Say this out loud. Catching drift is the whole point, and a silent
+        # catch is indistinguishable from no catch.
         if extra:
-            # Say this out loud. Catching drift is the whole point, and a silent
-            # catch is indistinguishable from no catch.
             log(
                 f"{c['short']} -> divergence: also touched {', '.join(extra)} "
                 f"(outside {', '.join(refs)}) — recorded, not filed"
             )
+        for note in declared:
+            log(f"{c['short']} -> declared scope note: {note[:80]}")
+
+        if extra or declared:
+            detail = ", ".join(extra) if extra else "; ".join(declared)
             divergence.append(
                 {
                     "sha": c["sha"],
                     "short": c["short"],
                     "subject": c["subject"],
-                    "areas": extra,
-                    "kind": "scope beyond the ticket",
+                    "areas": extra or ["(within a claimed file)"],
+                    "kind": (
+                        "declared by author"
+                        if declared and not extra
+                        else "scope beyond the ticket"
+                    ),
+                    "declared": declared,
                     "refs": refs,
                 }
             )
@@ -1213,7 +1298,7 @@ def sync_jira(
                             adf_text("Scope divergence on "),
                             adf_link(c["short"], commit_url),
                             adf_text(f" ({', '.join(refs)}): "),
-                            adf_text(", ".join(extra)),
+                            adf_text(detail),
                         ),
                         adf_para(
                             adf_text(
@@ -1579,11 +1664,19 @@ def main() -> int:
         metavar="KEY",
         help="mark a ticket In Progress and comment that work began, then exit",
     )
+    ap.add_argument(
+        "--docs-only",
+        action="store_true",
+        help="regenerate docs/releases and build-info from git alone — no credentials, no network",
+    )
     args = ap.parse_args()
 
     if not CONFIG_PATH.exists():
         raise Fail(f"missing config: {CONFIG_PATH}")
     cfg = json.loads(CONFIG_PATH.read_text())
+
+    if load_env_file():
+        log("loaded credentials from .atlassian.env")
 
     site = os.environ.get("ATLASSIAN_SITE") or cfg["site"]
     email = os.environ.get("ATLASSIAN_EMAIL", "").strip()
@@ -1591,6 +1684,34 @@ def main() -> int:
 
     if args.check and args.dry_run:
         raise Fail("--check needs real credentials, so it cannot be combined with --dry-run")
+
+    # --- docs only: pure git, no credentials, no network ------------------
+    if args.docs_only:
+        synced = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        excluded = cfg.get("exclude_subject_prefixes", [])
+        gen_paths = cfg.get("exclude_path_prefixes", [])
+        commits = collect_commits("HEAD", cfg["areas"], excluded, gen_paths)
+
+        # Ticket keys come straight from the commit messages, so the release
+        # notes and the site's Delivery panel are complete without an API call.
+        project = cfg["jira"]["project_key"]
+        jira_map = {
+            c["sha"]: {
+                "key": referenced_keys(c, project)[0],
+                "url": f"https://{site}/browse/{referenced_keys(c, project)[0]}",
+                "action": "referenced",
+            }
+            for c in commits
+            if referenced_keys(c, project)
+        }
+
+        step("Release notes (docs-only)")
+        notes = write_release_notes(cfg, commits, [], synced)
+        log(f"wrote {len(notes)} file(s)")
+        info = write_build_info(cfg, commits, jira_map, synced)
+        log(f"wrote {info.relative_to(REPO_ROOT)}")
+        print("\n✓ docs regenerated", flush=True)
+        return 0
 
     if not args.dry_run and not (email and token):
         raise Fail(

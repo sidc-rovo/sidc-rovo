@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+
+  "sandbox": {
+    "network": {
+      "allowedDomains": [
+        "affirma-demo.atlassian.net",
+        "api.atlassian.com",
+        "id.atlassian.com",
+        "api.github.com",
+        "github.com",
+        "sidc-rovo.github.io"
+      ]
+    }
+  },
+
+  "permissions": {
+    "allow": [
+      "Bash(python3 scripts/atlassian_sync.py *)",
+      "Bash(python3 scripts/atlassian_sync.py)",
+      "Bash(scripts/install-hooks.sh)",
+      "Bash(scripts/reset-demo.sh *)",
+      "Bash(./scripts/reset-demo.sh *)",
+      "Bash(python3 -m http.server *)",
+      "Bash(git status *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git show *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}

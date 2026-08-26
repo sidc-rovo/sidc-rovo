@@ -40,7 +40,10 @@
   "_comment_docs": "Auto-generated documentation. Derived state, regenerated in full each run — same contract as the Confluence pages.",
   "docs": {
     "releases_dir": "docs/releases",
-    "decision_trailer": "Decision:"
+    "decision_trailer": "Decision:",
+
+    "_comment_scope_trailer": "Drift the author declares outright. Path matching cannot see scope creep inside a file the ticket already claims, so this is the channel for it.",
+    "scope_trailer": "Scope-note:"
   },
 
   "repo": {

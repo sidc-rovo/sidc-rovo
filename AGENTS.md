@@ -56,6 +56,25 @@ Nothing is hidden and nothing extra is invented. No new ticket appears. Instead:
 
 The plan stays the plan. The record matches what actually shipped.
 
+**Help it out when you know you strayed.** Some drift is invisible from the
+outside — if you tweak the styling of a page the ticket already owns, nothing in
+the file list gives it away. Just say so:
+
+```
+Scope-note: also restyled the delivery table — not the design system, that's SIDC-16
+```
+
+## If a command can't reach Atlassian
+
+Don't stop. There is more than one route, and using the next one is normal:
+
+1. The sync script (`scripts/atlassian_sync.py`) — it finds its own credentials.
+2. The Atlassian tools, if this session has them connected.
+3. Direct API calls as a last resort.
+
+Say which route you ended up using. The system is meant to heal around a broken
+path, not halt on it.
+
 ## If you decided something
 
 Add a line starting with `Decision:` in the commit message.
@@ -77,7 +96,9 @@ behind a choice is still findable in a year.
 
 ## Do not hand-edit these
 
-They are rebuilt from the project's history every time, so edits are lost:
+They are rebuilt from the project's history every time, so edits are lost. They
+are also deliberately not committed to git — they appear on your disk as soon as
+you commit, and are regenerated when the site is published:
 
 - `docs/releases/` — all of it
 - `site/build-info.json`

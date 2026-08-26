@@ -1,27 +1,17 @@
 name: Deploy site
 
-# Publishes site/ to GitHub Pages.
+# Publishes site/ to GitHub Pages, and generates the derived state first.
 #
-# One-time manual step: Settings → Pages → Source: GitHub Actions.
-# This cannot be automated — configure-pages(enablement: true) fails with
-# "Resource not accessible by integration" because the default GITHUB_TOKEN
-# has no admin rights to create a Pages site. Until it's enabled by hand,
-# this workflow fails on the configure step; everything after it is fine.
+# Runs on every push to main rather than only on site/** changes, because
+# build-info.json and the release notes are derived from git history — they
+# change on every commit even when no file under site/ does.
+#
+# One-time manual step already done: Settings → Pages → Source: GitHub Actions.
+# It cannot be automated — configure-pages(enablement: true) fails with
+# "Resource not accessible by integration" because the default GITHUB_TOKEN has
+# no admin rights to create a Pages site.
 on:
   push:
-    branches: [main]
-    paths:
-      - "site/**"
-      - ".github/workflows/pages.yml"
-  # Also deploy after Atlassian sync finishes. That job commits the refreshed
-  # build-info.json with [skip ci] — necessary, because build-info carries a
-  # synced_at timestamp that changes every run and would otherwise retrigger
-  # the sync forever. But [skip ci] also suppresses the push trigger above,
-  # which left the live Delivery panel permanently one commit stale. This
-  # trigger is how that commit reaches Pages.
-  workflow_run:
-    workflows: ["Atlassian sync"]
-    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -41,12 +31,26 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      # ref: main explicitly — on a workflow_run event the default checkout is
-      # the SHA that started the upstream run, which predates the build-info
-      # commit we are here to deploy.
       - uses: actions/checkout@v4
         with:
-          ref: main
+          # Release notes are built from the whole log, so a shallow clone would
+          # silently truncate them.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate derived state
+        # --docs-only reads nothing but git, so this needs no Atlassian
+        # credentials and cannot fail on a network hiccup.
+        run: python scripts/atlassian_sync.py --docs-only
+
+      - name: Publish release notes alongside the site
+        run: |
+          mkdir -p site/releases
+          cp -r docs/releases/. site/releases/
+          echo "release notes staged at /releases/"
 
       - name: Sanity-check the site
         run: |
@@ -55,7 +59,9 @@ jobs:
           # added back by the design work, so they must not gate a deploy.
           test -f site/index.html || { echo "site/index.html missing"; exit 1; }
           test -f site/app.js || { echo "site/app.js missing"; exit 1; }
-          echo "site/ has the required files"
+          test -f site/build-info.json || { echo "build-info.json not generated"; exit 1; }
+          test -f site/releases/README.md || { echo "release notes not staged"; exit 1; }
+          echo "site/ is complete"
 
       - uses: actions/configure-pages@v5
 
