@@ -50,6 +50,17 @@ CONFIG_PATH = REPO_ROOT / "atlassian.config.json"
 TIMEOUT = 30
 RECENT_ON_SITE = 12  # rows surfaced in build-info.json / the Delivery panel
 
+# Spec pages are hand-maintained, so the sync may only touch one region of them.
+# Everything between this heading and the next h2 is generated; the rest is the
+# author's and must survive untouched.
+STATUS_HEADING = "Implementation status"
+
+# Version messages the sync writes. Used to tell its own edits apart from a
+# human's when working out whether a spec has gone stale — without this, the act
+# of stamping the badge would reset the staleness clock and the check could never
+# fire.
+SYNC_VERSION_PREFIX = "auto:"
+
 FIELD_SEP = "\x1f"
 REC_SEP = "\x1e"
 
@@ -287,6 +298,70 @@ class Atlassian:
         results = res.get("results", []) or []
         return results[0] if results else None
 
+    def page(self, page_id: str) -> dict:
+        return self.get(f"/wiki/api/v2/pages/{page_id}?body-format=storage")
+
+    def last_human_edit(self, page_id: str) -> str | None:
+        """When a person last changed this page, ignoring the sync's own edits.
+
+        Without this distinction the staleness check is self-defeating: stamping
+        the status badge would count as an edit and the page would look freshly
+        reviewed forever.
+        """
+        try:
+            res = self.get(f"/wiki/api/v2/pages/{page_id}/versions?limit=50")
+        except Fail:
+            return None
+        for v in res.get("results", []) or []:  # newest first
+            msg = (v.get("message") or "").strip()
+            if not msg.startswith(SYNC_VERSION_PREFIX):
+                return v.get("createdAt")
+        return None
+
+    def replace_section(
+        self, page_id: str, heading: str, new_html: str, version_message: str
+    ) -> str:
+        """Swap one <h2> section of a page, leaving the rest of the body alone.
+
+        Returns "inserted", "replaced", or "unchanged". This is what makes it
+        safe to write into a page a human also owns.
+        """
+        if self.dry_run:
+            log(f"[dry-run] would update '{heading}' section on page {page_id}")
+            return "dry-run"
+
+        current = self.page(page_id)
+        body = current.get("body", {}).get("storage", {}).get("value", "")
+        block = f"<h2>{heading}</h2>{new_html}"
+
+        pattern = re.compile(
+            rf"<h2>\s*{re.escape(heading)}\s*</h2>.*?(?=<h2[\s>]|\Z)", re.S
+        )
+        if pattern.search(body):
+            updated = pattern.sub(block, body, count=1)
+            action = "replaced"
+        else:
+            updated = block + body
+            action = "inserted"
+
+        if updated == body:
+            return "unchanged"
+
+        self.put(
+            f"/wiki/api/v2/pages/{page_id}",
+            {
+                "id": str(page_id),
+                "status": "current",
+                "title": current["title"],
+                "body": {"representation": "storage", "value": updated},
+                "version": {
+                    "number": int(current["version"]["number"]) + 1,
+                    "message": f"{SYNC_VERSION_PREFIX} {version_message}",
+                },
+            },
+        )
+        return action
+
     def footer_comment(self, page_id: str, storage_html: str) -> dict:
         """Comment on a page. Comments survive body regeneration, which is what
         makes them the right place for an audit trail on a derived page."""
@@ -432,6 +507,7 @@ def storage_release_log(
     synced_at: str,
     divergence: list[dict] | None = None,
     gaps: list[dict] | None = None,
+    stale: list[dict] | None = None,
 ) -> str:
     repo_url = cfg["repo"]["web_url"]
     jira_url = cfg["jira"]["project_url"]
@@ -517,6 +593,36 @@ plan and the record still matches what shipped.</p>
         else ""
     )
 
+    stale_rows = "".join(
+        f"<tr>"
+        f"<td><a href='{escape(cfg['confluence']['space_url'].rsplit('/', 1)[0])}"
+        f"/pages/{escape(s['page_id'])}'>{escape(s['title'])}</a></td>"
+        f"<td>{escape(', '.join(s['tickets']))}</td>"
+        f"<td>{escape(s['edited'])}</td>"
+        f"<td>{escape(s['implemented'])}</td>"
+        f"</tr>"
+        for s in (stale or [])
+    )
+    stale_section = (
+        f"""
+<h2>Specs that may be out of date</h2>
+<ac:structured-macro ac:name="note">
+  <ac:rich-text-body>
+    <p>The work implementing these specs landed <em>after</em> a person last edited
+    them. Nothing is broken, which is exactly why this goes unnoticed: the
+    document still reads as current while the code has moved on. Re-saving a page
+    after reviewing it clears the flag.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+<table>
+  <thead><tr><th>Spec</th><th>Tickets</th><th>Last human edit</th><th>Implemented</th></tr></thead>
+  <tbody>{stale_rows}</tbody>
+</table>
+"""
+        if stale_rows
+        else ""
+    )
+
     area_rows = "".join(
         f"<tr><td>{escape(area)}</td><td>{count}</td></tr>"
         for area, count in sorted(by_area.items(), key=lambda kv: -kv[1])
@@ -551,6 +657,7 @@ plan and the record still matches what shipped.</p>
 
 {divergence_section}
 {f"<h2>Evidence gaps</h2>{gap_section}" if gap_section else ""}
+{stale_section}
 <h2>Release history</h2>
 <table>
   <thead>
@@ -559,6 +666,145 @@ plan and the record still matches what shipped.</p>
   <tbody>{rows or "<tr><td colspan='5'>No commits yet.</td></tr>"}</tbody>
 </table>
 """.strip()
+
+
+def _iso_day(ts: str | None) -> str:
+    return (ts or "")[:10] or "unknown"
+
+
+def sync_spec_pages(
+    api: Atlassian, cfg: dict, all_commits: list[dict], synced_at: str
+) -> list[dict]:
+    """Stamp each spec page with its implementation state, and flag stale specs.
+
+    A spec is stale when the work implementing it landed *after* the last time a
+    human touched the spec. That is the quiet failure mode of written plans: the
+    doc still reads as current, the code has moved on, and nobody notices because
+    nothing is broken. Cheap to detect once commits name their tickets.
+
+    Returns stale records for the Release Log.
+    """
+    conf = cfg["confluence"]
+    project = cfg["jira"]["project_key"]
+    spec_map = conf.get("spec_pages") or {}
+    site_base = f"https://{cfg['site']}"
+    repo_url = cfg["repo"]["web_url"]
+
+    if not spec_map or api.dry_run:
+        return []
+
+    # label -> [tickets], via one query
+    try:
+        labels = ", ".join(f'"{l}"' for l in sorted(spec_map))
+        issues = api.jql(
+            f"project = {project} AND labels IN ({labels}) ORDER BY key ASC",
+            fields="key,summary,labels,status",
+        )
+    except Fail as exc:
+        log(f"could not load spec tickets (non-fatal): {exc}")
+        return []
+
+    # ticket -> latest commit that referenced it
+    last_commit: dict[str, dict] = {}
+    for c in all_commits:  # oldest first, so the last write wins
+        for r in referenced_keys(c, project):
+            last_commit[r] = c
+
+    # page -> tickets governed by it
+    by_page: dict[str, list[dict]] = {}
+    for issue in issues:
+        for label in issue["fields"].get("labels", []):
+            page = spec_map.get(label)
+            if page:
+                by_page.setdefault(page, []).append(issue)
+                break
+
+    stale: list[dict] = []
+    for page_id, tickets in by_page.items():
+        edited = api.last_human_edit(page_id)
+        try:
+            title = api.page(page_id)["title"]
+        except Fail:
+            title = f"page {page_id}"
+
+        rows, newest_impl, is_stale = [], None, False
+        for t in sorted(tickets, key=lambda i: i["key"]):
+            key = t["key"]
+            status = t["fields"].get("status", {}).get("name", "?")
+            done = status.lower() == str(cfg["jira"].get("done_status", "Done")).lower()
+            c = last_commit.get(key)
+
+            colour = "green" if done else ("blue" if c else "neutral")
+            evidence = (
+                f"<a href='{escape(repo_url)}/commit/{escape(c['sha'])}'>"
+                f"<code>{escape(c['short'])}</code></a> · {escape(c['date'][:10])}"
+                if c
+                else "<em>no commit yet</em>"
+            )
+
+            if done and c and edited and c["date"][:19] > edited[:19]:
+                is_stale = True
+                if newest_impl is None or c["date"] > newest_impl:
+                    newest_impl = c["date"]
+
+            rows.append(
+                f"<tr>"
+                f"<td><a href='{escape(site_base)}/browse/{escape(key)}'>{escape(key)}</a></td>"
+                f"<td>{escape(t['fields'].get('summary', ''))}</td>"
+                f"<td><ac:structured-macro ac:name='status'>"
+                f"<ac:parameter ac:name='title'>{escape(status.upper())}</ac:parameter>"
+                f"<ac:parameter ac:name='colour'>{colour}</ac:parameter>"
+                f"</ac:structured-macro></td>"
+                f"<td>{evidence}</td>"
+                f"</tr>"
+            )
+
+        verdict = (
+            "<ac:structured-macro ac:name='warning'><ac:rich-text-body>"
+            f"<p><strong>This spec may be out of date.</strong> Work implementing it "
+            f"landed on {escape(_iso_day(newest_impl))}, after this page was last "
+            f"edited by a person on {escape(_iso_day(edited))}. The code has moved; "
+            f"the words here may not have. Worth a read — and if it is still "
+            f"accurate, just re-save the page to clear this.</p>"
+            "</ac:rich-text-body></ac:structured-macro>"
+            if is_stale
+            else "<ac:structured-macro ac:name='tip'><ac:rich-text-body>"
+            f"<p>Spec is current: last edited by a person on "
+            f"{escape(_iso_day(edited))}, no implementing work has landed since.</p>"
+            "</ac:rich-text-body></ac:structured-macro>"
+        )
+
+        block = (
+            "<ac:structured-macro ac:name='info'><ac:rich-text-body>"
+            "<p>Generated section. The table and the verdict below are written by "
+            "<code>scripts/atlassian_sync.py</code> on every sync. Everything else on "
+            "this page is hand-maintained and untouched.</p>"
+            "</ac:rich-text-body></ac:structured-macro>"
+            f"{verdict}"
+            "<table><thead><tr><th>Ticket</th><th>Summary</th><th>Status</th>"
+            "<th>Evidence</th></tr></thead>"
+            f"<tbody>{''.join(rows)}</tbody></table>"
+            f"<p><em>Checked {escape(synced_at)}.</em></p>"
+        )
+
+        action = api.replace_section(
+            page_id, STATUS_HEADING, block, "implementation status"
+        )
+        flag = " — STALE" if is_stale else ""
+        log(f"spec '{title}': status {action}{flag}")
+
+        if is_stale:
+            stale.append(
+                {
+                    "page_id": page_id,
+                    "title": title,
+                    "edited": _iso_day(edited),
+                    "implemented": _iso_day(newest_impl),
+                    "tickets": [t["key"] for t in tickets],
+                }
+            )
+
+    return stale
 
 
 def storage_decision_log(commits: list[dict], cfg: dict, synced_at: str) -> str:
@@ -1402,10 +1648,13 @@ def main() -> int:
                 + " marked Done with no commit referencing them"
             )
 
+        # Stamp the spec pages first — the Release Log reports what this finds.
+        stale = sync_spec_pages(api, cfg, all_commits, synced_at)
+
         rel = api.upsert_page(
             space_id,
             conf["release_log_title"],
-            storage_release_log(all_commits, cfg, synced_at, divergence, gaps),
+            storage_release_log(all_commits, cfg, synced_at, divergence, gaps, stale),
             parent_page,
         )
         log(f"{conf['release_log_title']}: {'created' if rel.get('created') else 'updated'}")
