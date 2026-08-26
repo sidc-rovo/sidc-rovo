@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sidc-rovo.github.io/sidc-rovo/sitemap.xml
