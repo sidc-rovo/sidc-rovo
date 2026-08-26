@@ -192,10 +192,50 @@ def collect_commits(
     return commits
 
 
+#: Body lines that are metadata, not a claim of delivery. A ticket key
+#: mentioned inside one of these is a cross-reference — "this belongs with
+#: SIDC-18" — and must not advance that ticket. Found the hard way: a
+#: Scope-note naming a related ticket closed it.
+TRAILER_PREFIXES = ("decision:", "scope-note:", "co-authored-by:", "signed-off-by:", "refs:")
+
+
 def referenced_keys(commit: dict[str, Any], project_key: str) -> list[str]:
-    """Explicit SIDC-123 references in the commit message."""
-    text = f"{commit['subject']} {commit['body']}"
-    return sorted(set(re.findall(rf"\b{re.escape(project_key)}-\d+\b", text)))
+    """Tickets this commit claims to deliver.
+
+    Deliberately strict: a key counts only if it appears in the subject, or on a
+    body line consisting of nothing but keys — which is exactly the convention
+    CLAUDE.md prescribes ("SIDC-15" on its own line).
+
+    Prose mentions do NOT count. Rehearsing this caught two ways a loose match
+    goes wrong: a Scope-note reading "belongs with SIDC-18" closed SIDC-18, and
+    then a commit message *describing that bug* closed it again. Discussing a
+    ticket is not delivering it, and silently closing work nobody did is worse
+    than missing a link.
+    """
+    key_re = rf"\b{re.escape(project_key)}-\d+\b"
+    found = set(re.findall(key_re, commit["subject"]))
+
+    for line in commit["body"].splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.lower().startswith(TRAILER_PREFIXES):
+            continue
+        # A line that is only keys (optionally comma/space separated).
+        if re.fullmatch(rf"(?:{key_re}[,\s]*)+", stripped):
+            found.update(re.findall(key_re, stripped))
+
+    return sorted(found)
+
+
+def mentioned_keys(commit: dict[str, Any], project_key: str) -> list[str]:
+    """Tickets named only in trailers — related, but not delivered here."""
+    delivered = set(referenced_keys(commit, project_key))
+    all_keys = set(
+        re.findall(
+            rf"\b{re.escape(project_key)}-\d+\b",
+            f"{commit['subject']} {commit['body']}",
+        )
+    )
+    return sorted(all_keys - delivered)
 
 
 # ----------------------------------------------------------------------------
@@ -1271,6 +1311,12 @@ def sync_jira(
             )
         for note in declared:
             log(f"{c['short']} -> declared scope note: {note[:80]}")
+        related = mentioned_keys(c, project)
+        if related:
+            log(
+                f"{c['short']} -> mentions {', '.join(related)} in a trailer "
+                f"— cross-reference only, not advanced"
+            )
 
         if extra or declared:
             detail = ", ".join(extra) if extra else "; ".join(declared)

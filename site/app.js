@@ -150,5 +150,3 @@
       setText("build-status", "build-info.json — not generated yet");
     });
 })();
-
-/* rehearsal */
