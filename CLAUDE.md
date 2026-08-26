@@ -81,19 +81,35 @@ Report them as a short list with ticket key, title, and status.
 
 ### "Looks good" / "Ship it" / "Commit that"
 
-Treat all of these as: commit **and** push.
+**Commit only. Do not push.**
 
 ```bash
 git add -A && git commit -m "<what you did>
 
-SIDC-15" && git push
+SIDC-15"
 ```
 
-The push is what triggers the authoritative sync. The local hook fires first for
-instant feedback. You do not need to run the sync manually — both triggers do it.
+The local `post-commit` hook runs the full sync — Jira advances, Confluence is
+rewritten, `build-info.json` refreshes. Committing is enough to show the whole
+loop. You do not need to run the sync manually.
 
-Then tell him, in plain language, what moved: which ticket went to Done, that the
-Confluence record was rewritten, and that the live site is redeploying.
+Keeping the push separate matters: pushing redeploys the public site at
+<https://sidc-rovo.github.io/sidc-rovo/>, and mid-demo that would briefly publish
+a half-finished design. So don't.
+
+Then tell him in plain language what moved: which ticket went to Done, and that
+the Confluence record was rewritten.
+
+### "Publish it" / "Push it live" / "Put it on GitHub"
+
+Only on one of these — an explicit instruction to publish — do you push.
+
+```bash
+git push
+```
+
+Then note that GitHub Actions re-runs the same sync as the authoritative pass and
+the live site redeploys in about a minute.
 
 ### "Undo that" / "Reset the demo"
 
@@ -144,8 +160,8 @@ put the page in front of him rather than telling him a URL.
   brackets) anywhere in a commit message. GitHub scans the whole message body, so
   merely writing about it silently cancels every workflow for that commit. Say
   "the CI-skip directive" instead.
-- **Do not push without being asked.** Commit and push happen together, but only
-  when he says to ship.
+- **Do not push unless he explicitly says to publish.** "Ship it" means commit.
+  Pushing redeploys the public site, so it is a separate, deliberate step.
 - **Do not commit `.atlassian.env`.** It is git-ignored; keep it that way.
 
 ---

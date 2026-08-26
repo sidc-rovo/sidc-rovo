@@ -726,6 +726,12 @@ def sync_jira(
             log(f"{c['short']} -> {ref}: {trail}")
 
         if extra:
+            # Say this out loud. Catching drift is the whole point, and a silent
+            # catch is indistinguishable from no catch.
+            log(
+                f"{c['short']} -> divergence: also touched {', '.join(extra)} "
+                f"(outside {', '.join(refs)}) — recorded, not filed"
+            )
             divergence.append(
                 {
                     "sha": c["sha"],
