@@ -123,6 +123,11 @@ echo "▸ confluence"
 python3 scripts/atlassian_sync.py --skip-jira --range HEAD..HEAD >/dev/null
 echo "    regenerated from restored history"
 
+# Regenerating also rewrites build-info.json (its synced_at timestamp moves), so
+# the tree would be left dirty. Restore the committed copy — the demo should
+# start from a clean checkout, not a modified one.
+git checkout -- site/build-info.json 2>/dev/null || true
+
 echo
 echo "✓ demo reset. Preview the plain baseline with:"
 echo "    python3 -m http.server 8899 --directory site"
