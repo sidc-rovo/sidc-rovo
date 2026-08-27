@@ -16,6 +16,7 @@ the project's written record in step with the code by itself.
 | **Work items** | [Jira — SIDC project](https://affirma-demo.atlassian.net/jira/core/projects/SIDC/board) |
 | **The site** | <https://sidc-rovo.github.io/sidc-rovo/> |
 | **Generated release notes** | [`docs/releases/`](docs/releases) |
+| **Demo script** | [`docs/DEMO-RUNBOOK.md`](docs/DEMO-RUNBOOK.md) |
 
 ## The one thing to remember
 
