@@ -50,6 +50,9 @@ jobs:
         run: |
           mkdir -p site/releases
           cp -r docs/releases/. site/releases/
+          # index.html is what makes the bare /releases/ URL work — Pages does
+          # not treat README.md as a directory index.
+          test -f site/releases/index.html || { echo "release index missing"; exit 1; }
           echo "release notes staged at /releases/"
 
       - name: Sanity-check the site
@@ -60,7 +63,7 @@ jobs:
           test -f site/index.html || { echo "site/index.html missing"; exit 1; }
           test -f site/app.js || { echo "site/app.js missing"; exit 1; }
           test -f site/build-info.json || { echo "build-info.json not generated"; exit 1; }
-          test -f site/releases/README.md || { echo "release notes not staged"; exit 1; }
+          test -f site/releases/index.html || { echo "release notes not staged"; exit 1; }
           echo "site/ is complete"
 
       - uses: actions/configure-pages@v5

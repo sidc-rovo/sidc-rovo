@@ -1501,6 +1501,7 @@ def write_release_notes(
     docs_cfg = cfg.get("docs") or {}
     rel_dir = REPO_ROOT / docs_cfg.get("releases_dir", "docs/releases")
     project = cfg["jira"]["project_key"]
+    jira_url = cfg["jira"]["project_url"]
     repo_url = cfg["repo"]["web_url"]
     site_base = f"https://{cfg['site']}"
     trailer = docs_cfg.get("decision_trailer", "Decision:")
@@ -1635,6 +1636,109 @@ def write_release_notes(
     idx_path = rel_dir / "README.md"
     idx_path.write_text("\n".join(index))
     written.append(idx_path)
+
+    # ---- html index ------------------------------------------------------
+    # The markdown files are git-ignored, so GitHub never renders them — the
+    # published site is their only home, and a browser shows raw .md as plain
+    # text. This is the readable entry point, and it also gives /releases/ a
+    # directory index (Pages does not treat README.md as one).
+    def esc(s: str) -> str:
+        return escape(str(s), quote=True)
+
+    def rows_for(commits: list[dict]) -> str:
+        return "".join(
+            f"<tr>"
+            f"<td><a href='{esc(repo_url)}/commit/{esc(c['sha'])}'><code>{esc(c['short'])}</code></a></td>"
+            f"<td>{esc(c['subject'])}</td>"
+            f"<td>{esc(', '.join(c['areas']) or '—')}</td>"
+            f"<td>{esc(c['date'][:10])}</td>"
+            f"</tr>"
+            for c in commits
+        )
+
+    ticket_sections = "".join(
+        f"<h3 id='{esc(key)}'>"
+        f"<a href='{esc(site_base)}/browse/{esc(key)}'>{esc(key)}</a></h3>"
+        f"<p>{len(commits)} commit{'' if len(commits) == 1 else 's'} · "
+        f"<a href='{esc(key)}.md'>raw notes</a></p>"
+        f"<table><thead><tr><th>Commit</th><th>Change</th><th>Area</th><th>Date</th></tr></thead>"
+        f"<tbody>{rows_for(commits)}</tbody></table>"
+        for key, commits in sorted(by_ticket.items(), key=lambda kv: kv[0])
+    )
+
+    if unplanned:
+        ticket_sections += (
+            "<h3 id='unplanned'>Unplanned</h3>"
+            "<p>Commits that referenced no ticket · "
+            "<a href='UNPLANNED.md'>raw notes</a></p>"
+            "<table><thead><tr><th>Commit</th><th>Change</th><th>Area</th><th>Date</th></tr></thead>"
+            f"<tbody>{rows_for(unplanned)}</tbody></table>"
+        )
+
+    decision_items = "".join(
+        f"<li>{esc(d)} — "
+        f"<a href='{esc(repo_url)}/commit/{esc(c['sha'])}'><code>{esc(c['short'])}</code></a></li>"
+        for c, d in all_decisions
+    )
+    decisions_html = (
+        f"<h2>Decisions</h2><ul>{decision_items}</ul>" if decision_items else ""
+    )
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Release notes — {esc(cfg['repo']['slug'])}</title>
+<meta name="robots" content="noindex">
+<style>
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         max-width: 60rem; margin: 2rem auto; padding: 0 1.25rem; line-height: 1.55; }}
+  table {{ width: 100%; border-collapse: collapse; margin: 0.5rem 0 1.75rem; font-size: 0.92rem; }}
+  th, td {{ text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #ddd; vertical-align: top; }}
+  th {{ font-weight: 600; border-bottom: 2px solid #999; }}
+  code {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }}
+  .note {{ background: #f6f6f4; border-left: 3px solid #999; padding: 0.6rem 0.9rem; margin: 1.25rem 0; }}
+  @media (prefers-color-scheme: dark) {{
+    body {{ background: #111; color: #eee; }}
+    a {{ color: #7ab8ff; }}
+    th, td {{ border-color: #333; }}
+    .note {{ background: #1a1a1a; border-left-color: #555; }}
+  }}
+</style>
+</head>
+<body>
+<h1>Release notes</h1>
+<p><a href="{esc(repo_url)}">{esc(cfg['repo']['slug'])}</a> ·
+   <a href="{esc(jira_url)}">{esc(project)}</a> ·
+   <a href="{esc(cfg['confluence']['space_url'])}">Confluence</a> ·
+   <a href="../">back to the site</a></p>
+
+<div class="note">
+  <p><strong>Generated.</strong> Rebuilt from <code>git log</code> on every commit
+  and again at deploy time — never hand-written. One section per ticket, because
+  that answers the question people actually ask: what shipped for this piece of
+  work?</p>
+</div>
+
+<p>{len(all_commits)} tracked commit{'' if len(all_commits) == 1 else 's'} ·
+   {len(by_ticket)} ticket{'' if len(by_ticket) == 1 else 's'} ·
+   last synced {esc(synced_at)}</p>
+
+{decisions_html}
+
+<h2>By ticket</h2>
+{ticket_sections or "<p>Nothing tracked yet.</p>"}
+
+<h2>Full history</h2>
+<table><thead><tr><th>Commit</th><th>Change</th><th>Area</th><th>Date</th></tr></thead>
+<tbody>{rows_for(newest_first)}</tbody></table>
+</body>
+</html>
+"""
+    html_path = rel_dir / "index.html"
+    html_path.write_text(html)
+    written.append(html_path)
 
     return written
 
