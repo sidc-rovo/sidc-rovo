@@ -64,6 +64,10 @@ SYNC_VERSION_PREFIX = "auto:"
 FIELD_SEP = "\x1f"
 REC_SEP = "\x1e"
 
+#: Commits already reported as excluded, so the notice appears once per run
+#: rather than once per collect_commits call.
+_REPORTED_DROPS: set[str] = set()
+
 
 class Fail(RuntimeError):
     """Something went wrong that the user needs to read."""
@@ -145,11 +149,20 @@ def collect_commits(
     area_rules: list[dict[str, str]],
     exclude_prefixes: list[str] | None = None,
     exclude_paths: list[str] | None = None,
+    exclude_shas: list[dict] | None = None,
 ) -> list[dict[str, Any]]:
     fmt = FIELD_SEP.join(["%H", "%h", "%s", "%b", "%an", "%ae", "%aI"]) + REC_SEP
     raw = git("log", f"--pretty=format:{fmt}", "--no-merges", rev_range)
     skip = tuple(exclude_prefixes or ())
     skip_paths = tuple(exclude_paths or ())
+
+    # Normalise to lowercase hex so short and full SHAs both match.
+    sha_rules = {
+        str(e["sha"]).strip().lower(): e.get("why", "")
+        for e in (exclude_shas or [])
+        if e.get("sha")
+    }
+    dropped: list[tuple[str, str]] = []
 
     commits: list[dict[str, Any]] = []
     for chunk in raw.split(REC_SEP):
@@ -162,6 +175,16 @@ def collect_commits(
 
         # The sync's own derived-state commits are not work worth tracking.
         if skip and subject.strip().startswith(skip):
+            continue
+
+        # Explicitly excluded commits — scaffolding that history has to keep
+        # because something already links to its SHA.
+        matched = next(
+            (r for r in sha_rules if sha.lower().startswith(r) or r.startswith(sha.lower())),
+            None,
+        )
+        if matched:
+            dropped.append((short, sha_rules[matched]))
             continue
 
         # Generated files are dropped here, before classification. Otherwise the
@@ -187,6 +210,16 @@ def collect_commits(
                 "unclassified": unclassified,
             }
         )
+
+    # Report exclusions once per run. collect_commits is called several times
+    # (range and full history), and this must never be silent — a commit
+    # vanishing from the record without a word is the exact dishonesty this
+    # whole system is built to prevent.
+    for short, why in dropped:
+        if short in _REPORTED_DROPS:
+            continue
+        _REPORTED_DROPS.add(short)
+        log(f"excluded {short} from tracking" + (f" — {why}" if why else ""))
 
     commits.reverse()  # oldest first, so Jira issue order matches history
     return commits
@@ -1840,7 +1873,9 @@ def main() -> int:
         synced = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         excluded = cfg.get("exclude_subject_prefixes", [])
         gen_paths = cfg.get("exclude_path_prefixes", [])
-        commits = collect_commits("HEAD", cfg["areas"], excluded, gen_paths)
+        commits = collect_commits(
+            "HEAD", cfg["areas"], excluded, gen_paths, cfg.get("exclude_shas")
+        )
 
         # Ticket keys come straight from the commit messages, so the release
         # notes and the site's Delivery panel are complete without an API call.
@@ -1911,8 +1946,9 @@ def main() -> int:
     step(f"Reading git history ({rev_range})")
     excluded = cfg.get("exclude_subject_prefixes", [])
     gen_paths = cfg.get("exclude_path_prefixes", [])
-    new_commits = collect_commits(rev_range, cfg["areas"], excluded, gen_paths)
-    all_commits = collect_commits("HEAD", cfg["areas"], excluded, gen_paths)
+    dropped_shas = cfg.get("exclude_shas")
+    new_commits = collect_commits(rev_range, cfg["areas"], excluded, gen_paths, dropped_shas)
+    all_commits = collect_commits("HEAD", cfg["areas"], excluded, gen_paths, dropped_shas)
     log(f"{len(new_commits)} commit(s) in range · {len(all_commits)} in full history")
 
     if not new_commits:

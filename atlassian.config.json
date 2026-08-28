@@ -57,6 +57,14 @@
     "chore:"
   ],
 
+  "_comment_exclude_shas": "Specific commits dropped from tracking. Use sparingly and only for scaffolding: history is never rewritten here, because the Jira and Confluence records link to real SHAs and rewriting one breaks those links silently. Short or full SHAs both work; each exclusion is logged, never silent.",
+  "exclude_shas": [
+    {
+      "sha": "57051910147117986bd30b01d971e50f95b0c766",
+      "why": "Demo rehearsal run. Its code was reverted in d240bab, but the commit stays in history because a Jira comment on SIDC-15 links to this SHA."
+    }
+  ],
+
   "_comment_exclude_paths": "Generated files. Ignored when classifying a commit, so derived state never counts as work or triggers a false divergence.",
   "exclude_path_prefixes": [
     "docs/releases/",
