@@ -31,6 +31,32 @@ Everything else is scaffolding for those three.
 
 ---
 
+## Autopilot — if you'd rather just narrate
+
+One keystroke runs all four tickets end to end, committing between each, while
+you talk over it and point at Confluence and Jira updating themselves:
+
+```
+/demo
+```
+
+It does not stop for approval — it announces each ticket, does the work, commits,
+and moves on. Say **"pause after each ticket"** if you want gates instead. It
+never pushes, so the public site is untouched until you say *publish*.
+
+And to put everything back:
+
+```
+/demo-reset
+```
+
+The acts below are the manual version. Run them when you want to control the
+pacing, take questions between beats, or type the prompts yourself. **Act 5 and
+Act 6 are the payoff either way** — read those two before you present, because
+autopilot will fly past them and you need to know what to point at.
+
+---
+
 ## Act 0 — before you start
 
 - [ ] Tabs open: the **[SIDC space](https://affirma-demo.atlassian.net/wiki/spaces/SIDC/overview)**, the **[AEO Readiness Spec](https://affirma-demo.atlassian.net/wiki/spaces/SIDC/pages/17530882/AEO+Readiness+Spec)**, the **[Release Log](https://affirma-demo.atlassian.net/wiki/spaces/SIDC/pages/17039362/Release+Log)**, the [Jira board](https://affirma-demo.atlassian.net/jira/core/projects/SIDC/board), and a blank tab for the site
