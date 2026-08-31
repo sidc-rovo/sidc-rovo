@@ -1,92 +1,120 @@
-# Demo Runbook
+# Demo Runbook — Confluence-led
 
 Everything below is typed into Claude in plain English. Copy the prompts as
 written. There is exactly one shell command, in Act 0, and it only opens Claude
-in the right folder. About 8 minutes end to end.
+in the right folder. About 9 minutes end to end.
 
 ---
 
-## What you are actually demonstrating
+## The argument you are making
 
-Not "AI writes code". Everyone has seen that. The claim is narrower and harder:
+Confluence is where teams write down what they mean to do. Its failure mode isn't
+being wrong on day one — it's being **right on day one and never touched again**.
 
-> When work happens, the system of record updates itself — including when the
-> work drifts away from what was planned. Nobody moves a card. Nobody writes a
-> status update. And nothing gets invented to paper over the gap.
+> Documentation doesn't rot because people are lazy. It rots because nothing
+> connects it to the thing it describes.
 
-The site's own copy makes this argument in bet #1: *the future of AI is
-coordination, not generation*. This demo tests that claim on the site itself.
+So this demo runs in that direction: **start in the document, end in the
+document.** The spec defines done before any work happens. The code gets built
+against it. And then the page updates itself — including telling you, unprompted,
+that reality went somewhere the spec didn't describe.
 
-**The moment that lands is Act 4.** Everything before it is setup for that.
+Three beats carry it. Know these cold:
+
+| Beat | Act | The line |
+|---|---|---|
+| The spec defines "done" before the work | 2 | *"The agent read the plan rather than inventing its own definition of done."* |
+| The page comments on itself when reality diverges | 5 | *"Nobody told it to write that. The document noticed."* |
+| The page flags itself as stale | 6 | *"This spec just told me it might be out of date."* |
+
+Everything else is scaffolding for those three.
 
 ---
 
 ## Act 0 — before you start
 
-- [ ] Four browser tabs: the [Jira board](https://affirma-demo.atlassian.net/jira/core/projects/SIDC/board), the [SIDC space](https://affirma-demo.atlassian.net/wiki/spaces/SIDC/overview), the [AEO spec](https://affirma-demo.atlassian.net/wiki/spaces/SIDC/pages/17530882/AEO+Readiness+Spec), and a blank tab for the local site
-- [ ] Board shows exactly four things in **To Do**: SIDC-15, 16, 17, 18
+- [ ] Tabs open: the **[SIDC space](https://affirma-demo.atlassian.net/wiki/spaces/SIDC/overview)**, the **[AEO Readiness Spec](https://affirma-demo.atlassian.net/wiki/spaces/SIDC/pages/17530882/AEO+Readiness+Spec)**, the **[Release Log](https://affirma-demo.atlassian.net/wiki/spaces/SIDC/pages/17039362/Release+Log)**, the [Jira board](https://affirma-demo.atlassian.net/jira/core/projects/SIDC/board), and a blank tab for the site
+- [ ] Lead with the **space**, not the board — the board is the second tab, not the first
 - [ ] Terminal ready
-
-Open Claude in the project:
 
 ```bash
 cd /Users/schaturvedi2/Claude/sidc-rovo && claude
 ```
 
-Claude reads `CLAUDE.md` on start, which is what makes plain-English instructions
-work. You do not need to explain anything to it.
+Claude reads `CLAUDE.md` on start. You do not need to explain anything to it.
 
-> **Nothing is published during this demo.** Committing runs the whole loop
-> locally — Jira moves, Confluence rewrites. Pushing is a separate, optional
-> final step, so the public site stays as it is until you decide otherwise.
+> **Nothing is published during this demo.** Committing runs the whole loop —
+> Jira moves, Confluence rewrites. Pushing is a separate, optional final step.
+
+**Open on the space, before typing anything.** Six pages. Point out that four are
+hand-written — Architecture, Content Inventory, and two specs — and three are
+generated. Say you'll come back to that distinction, because it's the whole
+design.
 
 ---
 
-## Act 1 — show the plan · 1 min
+## Act 1 — the plan lives in the document · 1 min
 
 ```
-What's on my plate for the website?
+What's in my Confluence space for the website project?
 ```
 
 | Expected | Point at |
 |---|---|
-| Four open tickets with keys, titles, status — AEO, design system, portrait, accessibility. | The Jira board. Same four, same order. It read the real board. |
+| Claude lists the pages and distinguishes the specs from the generated records. | The space tab. Same pages. It read the real space. |
+
+> "This is where the intent lives. Not a ticket title — actual acceptance
+> criteria, written by a person, before anyone opened an editor."
 
 ---
 
-## Act 2 — pick up the work · 1 min
+## Act 2 — the spec defines done · 2 min ★
 
 ```
-Let's do the answer-engine one. Read the spec and tell me what it actually needs.
+Read the AEO spec and tell me what it says "done" looks like.
 ```
 
 | Expected | Point at |
 |---|---|
-| Claude summarises the AEO spec — structured data, FAQ markup, crawler files, meta basics — and marks the ticket started. | Refresh the board. **SIDC-15 has moved to In Progress.** Nobody dragged it. |
+| Claude summarises the five acceptance buckets — identity JSON-LD, extractable claims, FAQ markup, crawler files, meta basics — and the explicit out-of-scope list. | The spec page itself, side by side. It didn't invent this. |
 
-Worth saying: the acceptance criteria came from Confluence. The plan was written
-down *before* the work started, and the agent read it rather than inventing its
-own definition of done.
+This is beat one:
+
+> "The definition of done was written down before the work started, by a human,
+> in Confluence. The agent read it. It isn't guessing what good looks like, and
+> it isn't negotiating scope with itself — the out-of-scope list is in the page
+> too."
 
 ---
 
-## Act 3 — do the work · 2 min
+## Act 3 — the document hands off to the board · 1 min
 
 ```
-Go ahead and make those changes, then show me the site.
+Which ticket implements that spec? Start it.
 ```
 
 | Expected | Point at |
 |---|---|
-| Claude edits the page, adds `robots.txt`, `sitemap.xml`, `llms.txt`, starts a local preview, shows you the page. | The page looks *almost identical*. Say so before anyone else notices. |
+| Claude identifies **SIDC-15** from the spec and marks it In Progress. | Now switch to the board. **SIDC-15 has moved to In Progress.** Nobody dragged it. |
 
-Then:
+> "Confluence said what. Jira says where it is. The link between them was already
+> written into the page — the agent followed it rather than being told."
+
+---
+
+## Act 4 — build to the written criteria · 2 min
+
+```
+Build it to the spec, then show me the site.
+```
+
+| Expected | Point at |
+|---|---|
+| Claude edits the page, adds `robots.txt`, `sitemap.xml`, `llms.txt`, opens a local preview. | The page looks *almost identical*. Say so before anyone else notices. |
 
 ```
 Show me what a machine sees now that it couldn't before.
 ```
-
-It will show the structured data. This is the line:
 
 > "Nothing changed for you. Everything changed for a machine reading this page.
 > That's the dual-intent bet from the site's own copy — one page, two classes of
@@ -94,122 +122,139 @@ It will show the structured data. This is the line:
 
 ---
 
-## Act 4 — the divergence · 2 min ★
+## Act 5 — the document notices the drift · 3 min ★★
 
-Ask for something that is **not** in the ticket, the way real work always drifts:
+This is the act that matters. Ask for something the spec **does not** cover — the
+way real work always drifts:
 
 ```
 The dates in the delivery table are hard to read — format them nicer.
 ```
 
-Claude will do it. **Say nothing about scope yet.** Let it look like an ordinary
+Claude will do it. **Say nothing about scope.** Let it look like an ordinary
 aside. Then:
 
 ```
 Looks good. Ship it.
 ```
 
-The commit fires the sync in your terminal, live, while you talk. You will see
-something like:
+The sync runs in your terminal while you talk:
 
 ```
-▸ Jira — SIDC (update mode)
-    workstream exists: SIDC-1
-    a1b2c3d -> SIDC-15: Done
-    a1b2c3d -> divergence: also touched Site behaviour (outside SIDC-15) — recorded, not filed
+a1b2c3d -> SIDC-15: Done
+a1b2c3d -> divergence: also touched Site behaviour (outside SIDC-15) — recorded, not filed
 ```
 
-Then walk the tabs:
+Now walk it **document-first**:
 
-| Where | What happened |
+| 1. Where | What is there |
 |---|---|
-| **SIDC-15** | Moved to **Done**. New comment linking the exact commit — plus a *scope note* saying the commit also touched an area this ticket does not cover. |
-| **SIDC-1** (workstream) | A comment recording the divergence, so it is visible at programme level rather than buried in one ticket. |
-| **AEO Readiness Spec** | A comment: *"Reality diverged from this spec."* Page bodies get regenerated every run; comments persist, so this is what accumulates. |
-| **Release Log** | A new row linked to both commit and ticket. Above it, an **Unplanned changes** table naming exactly what fell outside the plan. |
+| **AEO Readiness Spec** → comments | *"Reality diverged from this spec."* Names the commit and the extra scope, and says the page is the thing to change if the scope should have been in it. |
+| **Release Log** | An **Unplanned changes** table naming exactly what fell outside the plan, plus a new release row linked to commit and ticket. |
+| **SIDC-1** (workstream) | The divergence recorded at programme level, not buried in one ticket. |
+| **SIDC-15** | Done, with a scope note on the delivery comment. |
 | **The board** | **Still four tickets.** Count them before and after. |
 
-Then land it:
+Land it:
 
-> "The work diverged from the plan — which is what always happens. Two bad
-> options are usually on offer: pretend it didn't, or file a ticket nobody asked
-> for. This did neither. The plan stayed the plan, the record matches what
-> actually shipped, and the divergence is visible to anyone who looks."
+> "Nobody told it to write that. The document noticed. And notice what it *didn't*
+> do — it didn't file a ticket nobody asked for, and it didn't quietly drop the
+> extra work. The plan stayed the plan. The record matches what shipped. The
+> person who owns the spec now has a decision to make, and they can see it."
 
-If someone asks why it doesn't just create a ticket: that's a config choice,
-`commit_mode`, deliberately set to `update`. Per-commit tickets turn a board into
-a changelog.
+If asked why not just create a ticket: that's a config choice, `commit_mode`,
+deliberately set to `update`. Per-commit tickets turn a board into a changelog.
 
-> **Why this exact prompt.** An earlier version said "tidy the delivery table",
-> and Claude solved it with a small style block inside `index.html` — a file
-> SIDC-15 already claims — so no divergence was detected and the act fell flat.
-> Formatting the dates lands in `site/app.js`, which SIDC-15 does not claim, so
-> the drift is guaranteed.
+**Two channels catch drift, not one:**
+
+- **Inferred** — from which files changed.
+- **Declared** — a `Scope-note:` line the agent writes itself. This exists because
+  path matching is structurally blind to scope creep inside a file the ticket
+  already owns. In an early run the agent noticed exactly that about itself and
+  wrote it in the commit message while the tooling stayed silent. That channel is
+  now first-class.
 
 ---
 
-## Act 4b — the rest of the record · 2 min
+## Act 6 — the page tells you it's behind · 1 min ★
 
 ```
-Show me everything that just got written down.
+Is the AEO spec still accurate?
+```
+
+| Expected | Point at |
+|---|---|
+| Claude reads the **Implementation status** section on the spec, which now says the spec may be out of date. | The panel on the spec page, with both timestamps. |
+
+> "Read that back. The work implementing this spec landed *after* a person last
+> edited it. The page is telling me it might be behind the code. Nothing is
+> broken — which is exactly why this normally goes unnoticed for six months."
+
+Worth naming the mechanism, because it's the subtle bit:
+
+> "It tracks the last time a *human* touched the page, not the last time anything
+> touched it. Otherwise stamping this status would reset the clock and the check
+> could never fire."
+
+Re-saving the page after reviewing it clears the flag. That's the intended loop:
+the document asks for attention, a person gives it, the flag goes away.
+
+---
+
+## Act 7 — what else wrote itself · 1 min
+
+```
+Show me everything that got written down.
 ```
 
 | Where | What is there | Who it is for |
 |---|---|---|
-| **AEO spec** — a comment | "Reality diverged from this spec", naming the commit and the extra scope. | Whoever owns the plan. |
 | **Decision Log** | Every `Decision:` line from the commit messages, with ticket and commit. | Whoever asks "why is it like this" in six months. |
-| `docs/releases/SIDC-15.md` | What shipped, decisions, scope notes, files touched. | Whoever wants release notes without writing release notes. |
+| **Changelog by Commit** | Full per-commit detail, regenerated from `git log`. | Whoever needs the long version. |
 | **Release Log → Evidence gaps** | Tickets marked Done that no commit references. | Whoever has to trust the board. |
-| **AEO spec → Implementation status** | Now flagged **stale**: the work landed after a human last edited the spec. | Whoever assumes the doc is current. |
+| [`/releases/`](https://sidc-rovo.github.io/sidc-rovo/releases/) | The same notes published on the site. | Whoever wants release notes without writing release notes. |
 
-The line for the Decision Log:
+The Decision Log line:
 
 > "Architecture decision records are a great idea that almost nobody keeps up,
 > because the ceremony costs more than the benefit. This costs one line in a
 > commit message, sits next to the change it justifies, and can't drift from the
 > code — because it *is* the code's history."
 
-And for evidence gaps, the uncomfortable version:
+And the honesty point, which is worth making explicitly:
 
-> "Everything so far catches work that wasn't planned. This catches the opposite
-> — work that was *claimed*. A Done card with no commit behind it is the failure
-> mode every status report has. Same mechanism, pointed the other way."
-
-**Two channels catch drift, not one:**
-
-- **Inferred** — from which files changed.
-- **Declared** — a `Scope-note:` line in the commit message. This exists because
-  path matching is structurally blind to scope creep inside a file the ticket
-  already owns. In the first live run the agent noticed that about itself and
-  wrote it in the commit message while the tooling stayed silent. That channel is
-  now first-class.
+> "Those three pages are regenerated in full from `git log` every run. They can't
+> drift, and re-running is free. The cost is that you can't hand-edit them — and
+> each one says so at the top. The other three pages in this space are yours and
+> are never touched."
 
 ---
 
-## Act 5 — the visual payoff · 2 min
+## Act 8 — the spec you can see · 2 min
 
 ```
-Now make it look good.
+Read the design spec and build the site to it.
 ```
 
 | Expected | Point at |
 |---|---|
-| Claude picks up SIDC-16, reads the design spec from Confluence, writes the stylesheet, shows you the page. | Dramatic change. The crowd-pleaser after two acts of invisible work. |
+| Claude reads **Design System & Tokens**, writes the stylesheet, shows you the page. | Dramatic change — the crowd-pleaser after two acts of invisible work. |
 
-The design was not improvised — tokens, type scale, and accessibility rules were
-written down in Confluence first. Then:
+The point is not that it looks good. It's that the tokens, type scale, contrast
+rules and reduced-motion requirement were **written in Confluence first**, and
+the page has a "Done when" checklist you can read back against the result.
 
 ```
 Ship it.
 ```
 
-SIDC-16 goes to Done. This time there should be **no** divergence — the commit
-stayed inside the ticket's scope. Contrast with Act 4: the system is not flagging
-everything, it is flagging drift.
+SIDC-16 → Done. This time there should be **no** divergence — the commit stayed
+inside the ticket's scope. Contrast with Act 5: the system isn't flagging
+everything, it's flagging drift.
 
 ---
 
-## Act 6 — finish the board · 1 min
+## Act 9 — finish the board · 1 min
 
 ```
 Put my photo back, then ship it.
@@ -219,23 +264,21 @@ Put my photo back, then ship it.
 Check the page is accessible and fix anything that isn't, then ship it.
 ```
 
-SIDC-17 and SIDC-18 to Done. The board is now empty except the workstream — and
-every card moved itself.
+SIDC-17 and SIDC-18 → Done. The board is empty except the workstream, and every
+card moved itself.
 
 ---
 
-## Act 7 — publish · optional, 1 min
+## Act 10 — publish · optional, 1 min
 
 ```
 Publish it.
 ```
 
-| Expected | Point at |
-|---|---|
-| Claude pushes. GitHub Actions re-runs the identical sync as the authoritative pass, then regenerates the release notes and redeploys. | The [Actions tab](https://github.com/sidc-rovo/sidc-rovo/actions) — same script, retained logs, an audit trail. Then [the live site](https://sidc-rovo.github.io/sidc-rovo/) about a minute later, and the notes at `/releases/`. |
-
-The Delivery section on the live page now shows the commits you just made, with
-their ticket keys. The page reports its own construction.
+GitHub Actions re-runs the identical sync as the authoritative pass, regenerates
+the release notes, and redeploys. Point at the [Actions
+tab](https://github.com/sidc-rovo/sidc-rovo/actions) — same script, retained
+logs, an audit trail — then [the live site](https://sidc-rovo.github.io/sidc-rovo/).
 
 ---
 
@@ -245,21 +288,20 @@ their ticket keys. The page reports its own construction.
 Reset the demo.
 ```
 
-Claude runs `scripts/reset-demo.sh`, which asks for confirmation, then:
-
 | Restores | How |
 |---|---|
 | The plain site | Hard reset to the `demo-baseline` tag |
 | The four tickets | Every `demo-scope` ticket back to **To Do** |
 | Confluence | Regenerated from the restored history — it self-heals, being derived state |
 
-Nothing is destroyed. The polished design stays on the `design-v1` tag. Comments
-left on tickets during the demo remain, which is honest — Jira history is not
-meant to be erasable.
+Nothing is destroyed. The polished design stays on the `design-v1` tag.
 
-> If you published in Act 7, add `--push` to reset the remote too:
-> `scripts/reset-demo.sh --push`. That rewrites remote history, so only on this
-> demo repo.
+**What reset does not clear:** comments left on Jira tickets and spec pages. Jira
+history isn't meant to be erasable, and honestly it shouldn't be. If you demo
+twice to the same audience, the second run shows the first run's comments.
+
+If you published in Act 10, add `--push` to reset the remote too:
+`scripts/reset-demo.sh --push`.
 
 ---
 
@@ -268,11 +310,12 @@ meant to be erasable.
 | Symptom | What to do |
 |---|---|
 | "no credentials found, skipping" | `.atlassian.env` is missing. The commit still succeeded. Run `python3 scripts/atlassian_sync.py --check`. |
-| A ticket didn't move | The commit message probably didn't have the key **on its own line** — that's the rule. Ask Claude: *"that commit didn't reference the ticket — fix the record."* |
-| Claude offers to create a new ticket | Tell it not to. `CLAUDE.md` forbids it, but say *"don't create tickets, the plan already exists"* and move on. |
-| A script can't reach Atlassian | Expected to self-heal — Claude should fall back to the Atlassian tools and say so. If it stops instead, tell it to try the other route. |
-| Claude pushes when you said ship | Harmless, just deploys early. Carry on. |
+| A ticket didn't move | The commit message needs the key **on its own line** — that's the rule, deliberately strict. Ask Claude: *"that commit didn't reference the ticket — fix the record."* |
+| A ticket moved that shouldn't have | Shouldn't happen any more, but tell Claude to revert it and say which. Mentions in `Decision:` / `Scope-note:` lines and in prose no longer count as deliveries. |
+| Claude offers to create a new ticket | Tell it not to. `CLAUDE.md` forbids it, but say *"don't create tickets, the plan already exists"*. |
+| A script can't reach Atlassian | Expected to self-heal — Claude should fall back to the Atlassian tools and say which route it used. If it stops instead, tell it to try the other route. That fallback is designed, and worth pointing out when it happens. |
 | Preview shows a stale page | Hard-reload. The local server doesn't cache; the browser might. |
+| Don't run `--all` | It would post divergence notices for ten pre-convention commits. The normal path never needs it. |
 
 ---
 
@@ -280,17 +323,18 @@ meant to be erasable.
 
 | Question | Answer |
 |---|---|
-| "Is the ticket reference in the commit doing all the work?" | Yes, and say so — it's the whole coupling mechanism. The honest version: the hard part isn't reading the key, it's deciding what to do when the commit doesn't match the ticket. That's Act 4. |
+| "Isn't this just a commit-message convention?" | The convention is the cheap half. The hard half is deciding what to do when the commit doesn't match the ticket — Act 5 — and that's not a convention, it's a policy. |
+| "What stops the docs being wrong?" | Two different mechanisms. The generated pages can't be wrong because they're derived from `git log`. The hand-written pages can be wrong, which is why they carry a staleness check instead of a promise. |
 | "Why not Jira's native GitHub integration?" | Excellent at linking commits to existing issues. It won't move a ticket through a workflow on your rules, own Confluence, or reason about scope drift. Complementary. |
-| "Does this scale to a team?" | The mechanism does — path classification plus idempotent writes. One-issue-per-commit does not, which is exactly why this is in update mode. At team scale you'd key off the PR. |
-| "What stops it corrupting the record?" | Confluence is regenerated from `git log` in full every run, so it cannot drift. Jira is only ever advanced or commented, never rewritten. |
-| "Is this Rovo?" | No — plain REST against Jira and Confluence, standard-library Python. It's the substrate that makes work legible enough for Rovo to be useful on top. |
+| "Does this scale to a team?" | The mechanism does — path classification plus idempotent writes. One-issue-per-commit does not, which is why this is in update mode. At team scale you'd key off the PR. |
 | "Could the agent just lie about what it did?" | Fair challenge. Not for the parts that matter: the Confluence record is derived from git, not from the agent's account of itself. The commit is the evidence. |
+| "Is this Rovo?" | No — plain REST against Jira and Confluence, standard-library Python. It's the substrate that makes work legible enough for Rovo to be useful on top. |
+| "What happens when the spec and the code disagree?" | That's Act 5 and Act 6. The system doesn't resolve it — it surfaces it and names who has to decide. Automating the decision would be the wrong move. |
 
 ---
 
 ## Related
 
+- Confluence: [SIDC space](https://affirma-demo.atlassian.net/wiki/spaces/SIDC/overview) — **AEO Readiness Spec** · **Design System & Tokens** · **Website Architecture** · **Content Inventory** · *Release Log* · *Changelog by Commit* · *Decision Log* (italics = generated)
 - Jira: [SIDC-1](https://affirma-demo.atlassian.net/browse/SIDC-1) workstream · [SIDC-15](https://affirma-demo.atlassian.net/browse/SIDC-15) · [SIDC-16](https://affirma-demo.atlassian.net/browse/SIDC-16) · [SIDC-17](https://affirma-demo.atlassian.net/browse/SIDC-17) · [SIDC-18](https://affirma-demo.atlassian.net/browse/SIDC-18)
-- Confluence: **AEO Readiness Spec** · **Design System & Tokens** · **Website Architecture** · **Content Inventory** · **Decision Log** · **Release Log**
 - Code: [`CLAUDE.md`](../CLAUDE.md) · [`AGENTS.md`](../AGENTS.md) · [`scripts/atlassian_sync.py`](../scripts/atlassian_sync.py) · [`SETUP.md`](SETUP.md)
