@@ -64,7 +64,7 @@ autopilot will fly past them and you need to know what to point at.
 - [ ] Terminal ready
 
 ```bash
-cd /Users/schaturvedi2/Claude/sidc-rovo && claude
+cd /Users/schaturvedi2/Claude/3-stage/sidc-rovo && claude
 ```
 
 Claude reads `CLAUDE.md` on start. You do not need to explain anything to it.
